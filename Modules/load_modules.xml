@@ -15,6 +15,7 @@
   <Script file='CooldownData.lua'/>
   <Script file='CooldownPlan.lua'/>
   <Script file='CooldownPlanRender.lua'/>
+  <Script file='CooldownLust.lua'/>
   <Script file='CooldownPlanEditor.lua'/>
   <Include file='CooldownPlanEditor.xml'/>
 </Ui>

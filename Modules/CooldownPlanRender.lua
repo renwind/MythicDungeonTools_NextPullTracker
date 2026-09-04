@@ -74,6 +74,11 @@ local function ensureCells(row, count, size)
       cell.cd:SetAllPoints(cell)
       cell.label = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
       cell.label:SetPoint("BOTTOM", cell, "BOTTOM", 0, 0)
+      -- bold-ish + outline for readability over icons
+      local lf, ls, _ = cell.label:GetFont()
+      if lf then cell.label:SetFont(lf, ls + 1, "OUTLINE") end
+      cell.label:SetShadowColor(0, 0, 0, 1)
+      cell.label:SetShadowOffset(1, -1)
       row.cells[i] = cell
     end
     cell:SetSize(size, size)
@@ -88,7 +93,7 @@ local function layoutRow(row, count, size)
   for i = 1, count do
     local cell = row.cells[i]
     cell:ClearAllPoints()
-    cell:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * (size + 2), 0)
+    cell:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * (size + 14), 0)
     cell:Show()
   end
 end
@@ -197,6 +202,7 @@ function Render:Render(frame, state, preset, nextPull)
         end
       end
     end
+    if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Hide(showRow) end
     return
   end
 
@@ -204,6 +210,7 @@ function Render:Render(frame, state, preset, nextPull)
   local pullIndex = state and state.currentNextPull
   if not uid or not pullIndex then
     showRow:Hide(); nextRow:Hide()
+    if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Hide(showRow) end
     return
   end
 
@@ -216,6 +223,8 @@ function Render:Render(frame, state, preset, nextPull)
   local entries = CooldownData.getActiveEntries(dbChar, uid, pullIndex)
   showRow:Show()
   fillRow(showRow, entries, dbChar, mismatch, ICON_SIZE, true)
+  -- bloodlust monitor to the right of the current-pull row
+  if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Update(showRow) end
 
   -- next-pull preview row (design 11.4): nextPull+1, smaller, no CD
   local nextIndex = (nextPull or pullIndex) + 1

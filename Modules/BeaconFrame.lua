@@ -8,6 +8,23 @@ local PullState = MDT_NPT.PullState
 local pairs, ipairs, unpack, string_format, tonumber = pairs, ipairs, unpack, string.format, tonumber
 local math_abs = math.abs
 
+-- MDT's AceLocale table (zhCN contains English->Chinese enemy names).
+-- MDT UI is load-on-demand, so its locale may not be registered at Start; use silent=true
+-- and retry on hover. Only cache successful lookups.
+local mdtLocale
+local function getMDTLocale()
+  if mdtLocale then return mdtLocale end
+  local ok, lib = pcall(LibStub, "AceLocale-3.0")
+  if ok and lib then
+    local ok2, loc = pcall(lib.GetLocale, lib, "MythicDungeonTools", true)
+    if ok2 and loc then
+      mdtLocale = loc
+      return mdtLocale
+    end
+  end
+  return nil
+end
+
 local FRAME_BASE_W, FRAME_BASE_H = 360, 196  -- raised 166->196 for cooldown-plan icon rows (design 10.1)
 local SCALE_MIN, SCALE_MAX = 0.5, 2.0
 
@@ -609,7 +626,8 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     frame.portraitOutlines[i]:Show()
     if frame.portraitHovers and frame.portraitHovers[i] then
       local rawName = enemy.name
-      frame.portraitHovers[i].mobName = rawName and ((MDT.L and MDT.L[rawName]) or rawName) or nil
+      local zh = (MDT_NPT.NPC_ZH and MDT_NPT.NPC_ZH[rawName]) or (getMDTLocale() and getMDTLocale()[rawName]) or (MDT.L and MDT.L[rawName])
+      frame.portraitHovers[i].mobName = rawName and (zh or rawName) or nil
       frame.portraitHovers[i]:Show()
     end
   end
