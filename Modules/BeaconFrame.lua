@@ -25,7 +25,60 @@ local function getMDTLocale()
   return nil
 end
 
-local FRAME_BASE_W, FRAME_BASE_H = 360, 196  -- raised 166->196 for cooldown-plan icon rows (design 10.1)
+-- Short enemy name: exact NPC_ZH_FINAL override first (prefix/middle-head names),
+-- then longest head-noun suffix from NPC_ZH_HEAD, then "…的" strip, else full name.
+local function shortEnemyName(zh)
+  if not zh or zh == "" then return nil end
+  if MDT_NPT.NPC_ZH_FINAL and MDT_NPT.NPC_ZH_FINAL[zh] then return MDT_NPT.NPC_ZH_FINAL[zh] end
+  local heads = MDT_NPT.NPC_ZH_HEAD
+  if heads then
+    local best
+    for _, head in ipairs(heads) do
+      if #zh >= #head and zh:sub(-#head) == head then
+        if not best or #head > #best then best = head end
+      end
+    end
+    if best then return best end
+  end
+  local after = zh:match("^.-的(.+)$")
+  if after and after ~= "" then return after end
+  return zh
+end
+
+-- Mob typing from static MDT data only (no nameplate parsing, to keep M+ frames
+-- cheap). Level tiers per MDT enemy info: <=90 normal, 91 elite, >91 boss; isBoss
+-- also forces boss. Priority: boss > elite > caster (interruptible spell) > other.
+-- Tints the portrait short-name label.
+local MOB_COLORS = {
+  caster   = { 0x4C / 255, 0xE0 / 255, 0xD2 / 255 },
+  miniboss = { 0x6E / 255, 0x24 / 255, 0xEC / 255 },
+  boss     = { 0xEB / 255, 0x84 / 255, 0x26 / 255 },
+  other    = { 0xAE / 255, 0x12 / 255, 0x00 / 255 },
+}
+
+---Static caster signal from MDT: Enemy Info lists the mob's spells; any spell flagged
+---interruptible means the mob casts (mirrors MDT's right-click Enemy Info spell list).
+local function hasInterruptibleSpell(enemy)
+  if not enemy.spells then return false end
+  for _, flags in pairs(enemy.spells) do
+    if flags and flags.interruptible then return true end
+  end
+  return false
+end
+
+local ELITE_LEVEL = 91 -- MDT enemy level tier: <=90 normal, ==91 elite, >91 boss
+
+local function staticMobType(enemy)
+  local level = enemy.level or 0
+  if enemy.isBoss or level > ELITE_LEVEL then return "boss" end
+  if level == ELITE_LEVEL then return "miniboss" end
+  if hasInterruptibleSpell(enemy) then return "caster" end
+  return "other"
+end
+
+local FRAME_BASE_W, FRAME_BASE_H = 360, 224  -- fixed height: the portrait area always
+                                             -- reserves the 2x4 grid + name labels, so
+                                             -- the window never resizes between pulls
 local SCALE_MIN, SCALE_MAX = 0.5, 2.0
 
 -- The old global MouseIsOver helper is no longer available in WoW 12.1.
@@ -583,6 +636,29 @@ local PORTRAIT_MAX = 8
 local PORTRAIT_TOP_Y = -70
 local PORTRAIT_PER_ROW = 4
 local PORTRAIT_ROW_GAP = 4
+local PORTRAIT_LABEL_H = 12        -- vertical band reserved for the short-name label under each portrait
+local PORTRAIT_LABEL_MAX_CHARS = 5 -- CJK chars that fit a portrait column at the 6px label font
+local COOLDOWN_ROW_Y = -158        -- cooldown icon row top: below the always-reserved 2x4 portrait grid + labels
+
+---Frame height is constant (the portrait area always reserves the 2x4 grid), except
+---in map-only mode where the info panel is hidden entirely.
+local function syncFrameHeight(frame)
+  local db = MDT_NPT:GetDB()
+  local mapOnly = (db and db.beacon and db.beacon.mapOnly) or false
+  local MAP_ONLY_H = 166
+  frame:SetHeight(mapOnly and MAP_ONLY_H or FRAME_BASE_H)
+end
+
+---UTF-8 aware char split, then keep the tail (the head noun sits at the end of a
+---Chinese compound) so an over-long short name never overlaps its neighbours.
+local function fitLabel(s, maxChars)
+  local chars = {}
+  for c in s:gmatch("[\1-\127\194-\244][\128-\191]*") do chars[#chars + 1] = c end
+  if #chars <= maxChars then return s end
+  local out = ""
+  for i = #chars - maxChars + 1, #chars do out = out .. chars[i] end
+  return out
+end
 
 ---Anchors the i-th portrait slot for a pull with `count` visible portraits.
 ---≤4 → one row at 34x34; >4 → 2x4 grid at 28x28 so the extra mobs fit without
@@ -590,7 +666,10 @@ local PORTRAIT_ROW_GAP = 4
 local function layoutPortraitSlot(frame, i, count)
   local twoRow = count > PORTRAIT_PER_ROW
   local size = twoRow and 28 or 34
-  local colGap = twoRow and 4 or 5
+  -- Spread the 4 columns to exactly fill the info panel width (same right edge as
+  -- the progress bar), so there is no dead space to the right of the portraits.
+  local panelW = frame.progressBarWidth or 184
+  local colGap = math.floor((panelW - PORTRAIT_PER_ROW * size) / (PORTRAIT_PER_ROW - 1))
 
   local portrait = frame.portraits[i]
   local outline = frame.portraitOutlines[i]
@@ -600,7 +679,7 @@ local function layoutPortraitSlot(frame, i, count)
   local row = math.floor((i - 1) / PORTRAIT_PER_ROW)
   local col = (i - 1) % PORTRAIT_PER_ROW
   local x = frame.portraitInfoPanelX + col * (size + colGap)
-  local y = PORTRAIT_TOP_Y - row * (size + PORTRAIT_ROW_GAP)
+  local y = PORTRAIT_TOP_Y - row * (size + PORTRAIT_ROW_GAP + PORTRAIT_LABEL_H)
 
   portrait:ClearAllPoints()
   portrait:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
@@ -617,6 +696,11 @@ local function renderEnemiesPortraits(frame, pull, enemies)
   end
 
   local count = #enemyIndices
+  -- The portrait area always reserves the 2x4 grid height, so the cooldown rows sit
+  -- at a fixed y and the frame height never changes between pulls.
+  frame.cooldownIconsRow:ClearAllPoints()
+  frame.cooldownIconsRow:SetPoint("TOPLEFT", frame, "TOPLEFT", frame.portraitInfoPanelX, COOLDOWN_ROW_Y)
+  syncFrameHeight(frame)
   for i = 1, count do
     layoutPortraitSlot(frame, i, count)
     local enemy = enemies[enemyIndices[i]]
@@ -624,9 +708,26 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     SetPortraitTextureFromCreatureDisplayID(frame.portraits[i], displayId)
     frame.portraits[i]:Show()
     frame.portraitOutlines[i]:Show()
+    -- short Chinese name under the portrait
+    local rawName = enemy.name
+    local zh = (MDT_NPT.NPC_ZH and MDT_NPT.NPC_ZH[rawName]) or (getMDTLocale() and getMDTLocale()[rawName]) or (MDT.L and MDT.L[rawName])
+    local nm = frame.portraitNames and frame.portraitNames[i]
+    if not nm then
+      nm = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+      local lf, ls, _ = nm:GetFont()
+      if lf then nm:SetFont(lf, ls - 4, "OUTLINE") end
+      nm:SetShadowColor(0, 0, 0, 1)
+      nm:SetShadowOffset(1, -1)
+      frame.portraitNames = frame.portraitNames or {}
+      frame.portraitNames[i] = nm
+    end
+    nm:ClearAllPoints()
+    nm:SetPoint("TOP", frame.portraits[i], "BOTTOM", 0, 0)
+    nm:SetText(fitLabel(shortEnemyName(zh) or "", PORTRAIT_LABEL_MAX_CHARS))
+    local mc = MOB_COLORS[staticMobType(enemy)] or MOB_COLORS.other
+    nm:SetTextColor(mc[1], mc[2], mc[3], 1)
+    nm:Show()
     if frame.portraitHovers and frame.portraitHovers[i] then
-      local rawName = enemy.name
-      local zh = (MDT_NPT.NPC_ZH and MDT_NPT.NPC_ZH[rawName]) or (getMDTLocale() and getMDTLocale()[rawName]) or (MDT.L and MDT.L[rawName])
       frame.portraitHovers[i].mobName = rawName and (zh or rawName) or nil
       frame.portraitHovers[i]:Show()
     end
@@ -634,6 +735,7 @@ local function renderEnemiesPortraits(frame, pull, enemies)
   for i = count + 1, PORTRAIT_MAX do
     frame.portraits[i]:Hide()
     frame.portraitOutlines[i]:Hide()
+    if frame.portraitNames and frame.portraitNames[i] then frame.portraitNames[i]:Hide() end
     if frame.portraitHovers and frame.portraitHovers[i] then
       frame.portraitHovers[i].mobName = nil
       frame.portraitHovers[i]:Hide()
@@ -669,7 +771,6 @@ local MAP_ONLY_W = Minimap.SIZE + 16 -- minimap plus its 8px margins on each sid
 local function applyLayoutMode(frame)
   local db = MDT_NPT:GetDB()
   local mapOnly = (db and db.beacon and db.beacon.mapOnly) or false
-  local MAP_ONLY_H = 166  -- minimap 150 + 8 top/bottom; equals original height (design 10.2)
 
   for _, widget in ipairs({ frame.pullBadge, frame.statusText, frame.infoText, frame.progressBar,
                             frame.cooldownIconsRow, frame.upcomingIconsRow }) do
@@ -690,12 +791,13 @@ local function applyLayoutMode(frame)
     for i = 1, #frame.portraits do
       frame.portraits[i]:Hide()
       frame.portraitOutlines[i]:Hide()
+      if frame.portraitNames and frame.portraitNames[i] then frame.portraitNames[i]:Hide() end
       if frame.portraitHovers[i] then frame.portraitHovers[i]:Hide() end
     end
   end
 
   frame:SetWidth(mapOnly and MAP_ONLY_W or FRAME_BASE_W)
-  frame:SetHeight(mapOnly and MAP_ONLY_H or FRAME_BASE_H)
+  syncFrameHeight(frame)
 end
 
 MDT_NPT.BeaconFrame = {

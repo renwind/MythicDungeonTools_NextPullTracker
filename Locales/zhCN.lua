@@ -31,6 +31,52 @@ L["Then"] = "然后"
 MDT_NPT.NPC_ZH = MDT_NPT.NPC_ZH or {}
 -- Example: MDT_NPT.NPC_ZH["Bonebow"] = "骨弓"
 MDT_NPT.NPC_ZH["Brutal Overseer"] = "鲁莽监督者"
+-- Head-noun list for the portrait short-name label. BeaconFrame.shortEnemyName keeps
+-- only the head noun via longest-suffix match, dropping adjectives and extra leading
+-- nouns ("狂野的刃牙虎人"->"虎人", "鲁莽监督者"->"监督者"). Add creature-type nouns here
+-- as new dungeons introduce them; unmatched names fall back to "…的" strip then full name.
+MDT_NPT.NPC_ZH_HEAD = MDT_NPT.NPC_ZH_HEAD or {
+  "虎人", "蛇人", "龙人", "海象人",
+  "蛇群", "三叶虫", "迅猛龙", "山猫",
+  "蝰蛇", "毒蛇", "飞蛇", "风蛇", "盘蛇", "扭缠蛇", "蛇",
+  "监督者", "守护者", "守卫", "战士", "法师", "秘法师", "萨满", "祭司", "妖术师", "术士",
+  "刺客", "驯兽师", "队长", "监工", "傀儡", "图腾", "小鬼", "地狱猎犬", "地狱火",
+  "虚空行者", "虚空之子", "构造体", "亡魂", "蛮兵", "元素", "水蛭", "蠕行者", "爬虫",
+  "主顾", "贵族", "工人", "流氓", "扒手", "魔典", "魔导师", "哨兵", "云气", "虚镰",
+  "毁灭者", "炎术士", "主母", "幼崽", "幼体", "黄金",
+  "看顾者", "残虐者", "恐魔", "管理员",
+  "鞭笞者", "漂流者", "塑地者", "看护者", "污染者", "征服者", "折磨者", "祈求者",
+  "织寒者", "重殴者", "撕裂者", "尖啸者", "守望者", "织烬者", "唤风者", "破法者",
+  "神射手", "裂爪兽", "虹虚魔", "医疗师", "追踪者", "引导者", "干扰者", "奔行者",
+  "暴风雪", "收集者", "掠夺者", "惩罚者", "召唤师", "执行者", "异常体", "魔宠", "亮鳞浮龙",
+}
+-- Exact final-name overrides (full zh name -> final), consulted FIRST by
+-- BeaconFrame.shortEnemyName. For names whose head noun is a prefix / middle part /
+-- custom composition that suffix matching cannot produce (e.g. "殓尸者姆沁巴"->"殓尸者").
+MDT_NPT.NPC_ZH_FINAL = MDT_NPT.NPC_ZH_FINAL or {
+  ["迪詹崔乌斯"] = "崔乌斯",
+  ["吉美尔鲁斯"] = "鲁斯",
+  ["厄克哈特·风脉"] = "风脉",
+  ["柯姬雅·焰蹄"] = "焰蹄",
+  ["利希尔·烬怒"] = "烬怒",
+  ["赛勒纳·避日"] = "避日",
+  ["梅莉杜莎·寒妆"] = "寒妆",
+  ["瑟拉奈尔·日鞭"] = "日鞭",
+  ["帕特拉女王"] = "女王",
+  ["守卫队长阿图"] = "队长阿图",
+  ["神灵代言人纳尼亚"] = "纳尼亚",
+  ["总管姆巴拉"] = "总管",
+  ["锐眼掠击鹰"] = "鹰",
+  ["小小邪能浮龙"] = "小浮龙",
+  ["殓尸者姆沁巴"] = "殓尸者",
+  ["大引导者莱瓦迪"] = "大引导者",
+  ["邪能主宰鲁科西"] = "邪能主宰",
+  ["次级生命之力"] = "次级生命",
+  ["冷酷的图腾召唤者"] = "图腾召唤",
+  ["歼灭者萨祖克斯"] = "歼灭者",
+  ["塞塔里斯之眼"] = "之眼",
+  ["凯斯媞亚·魔力之心"] = "魔力之心",
+}
 -- Midnight Season 2 (8 dungeons) enemy names, mapped from MDT zhCN.
 MDT_NPT.NPC_ZH["A Knot of Snakes"] = "缠绕的蛇群"
 MDT_NPT.NPC_ZH["Abducted Drakonid"] = "被绑架的龙人"
