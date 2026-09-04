@@ -8,7 +8,7 @@ local PullState = MDT_NPT.PullState
 local pairs, ipairs, unpack, string_format, tonumber = pairs, ipairs, unpack, string.format, tonumber
 local math_abs = math.abs
 
-local FRAME_BASE_W, FRAME_BASE_H = 360, 166
+local FRAME_BASE_W, FRAME_BASE_H = 360, 196  -- raised 166->196 for cooldown-plan icon rows (design 10.1)
 local SCALE_MIN, SCALE_MAX = 0.5, 2.0
 
 -- The old global MouseIsOver helper is no longer available in WoW 12.1.
@@ -93,7 +93,7 @@ local function create()
 
   -- === Beacon Frame ===
   local beaconFrame = CreateFrame("Frame", "MDTNextPullBeaconFrame", UIParent)
-  beaconFrame:SetSize(360, 166)
+  beaconFrame:SetSize(360, 196)
   beaconFrame:SetFrameStrata("MEDIUM")
   beaconFrame:SetClampedToScreen(true)
   beaconFrame:SetMovable(true)
@@ -311,6 +311,18 @@ local function create()
   upcomingText:SetScale(0.85)
   beaconFrame.upcomingText = upcomingText
 
+  -- Cooldown plan icon rows (design 10.1/16.2): current-pull row (24px) + next-pull
+  -- preview row (16px). Anchored at infoPanelX=166; fixed y to avoid portrait-row jitter.
+  local infoPanelX = 166
+  local cooldownIconsRow = CreateFrame("Frame", nil, beaconFrame)
+  cooldownIconsRow:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", infoPanelX, -134)
+  cooldownIconsRow:SetSize(184, 24)
+  beaconFrame.cooldownIconsRow = cooldownIconsRow
+  local upcomingIconsRow = CreateFrame("Frame", nil, beaconFrame)
+  upcomingIconsRow:SetPoint("TOPLEFT", cooldownIconsRow, "BOTTOMLEFT", 0, -4)
+  upcomingIconsRow:SetSize(184, 16)
+  beaconFrame.upcomingIconsRow = upcomingIconsRow
+
   -- === Beacon Actions ===
   beaconFrame:SetScript("OnDragStart", function(self)
     if not MDT_NPT:GetBeaconState().locked then
@@ -345,6 +357,18 @@ local function create()
         rootDescription:CreateCheckbox(L["Map Only"], function() return db.beacon.mapOnly end, function()
           db.beacon.mapOnly = not db.beacon.mapOnly
           Beacon:Update()
+        end)
+        rootDescription:CreateSpacer()
+        rootDescription:CreateCheckbox(L["Show Cooldown Plan"],
+          function() return db.beacon.showCooldownPlan end,
+          function()
+            db.beacon.showCooldownPlan = not db.beacon.showCooldownPlan
+            Beacon:Update()
+          end)
+        rootDescription:CreateButton(L["Edit Cooldown Plan"], function()
+          if not InCombatLockdown() and MDT_NPT.CooldownPlanEditor then
+            MDT_NPT.CooldownPlanEditor:Open()
+          end
         end)
         rootDescription:CreateButton(L["Open Settings"], function()
           if MDT_NPT.Settings and MDT_NPT.Settings.Open then
@@ -627,9 +651,19 @@ local MAP_ONLY_W = Minimap.SIZE + 16 -- minimap plus its 8px margins on each sid
 local function applyLayoutMode(frame)
   local db = MDT_NPT:GetDB()
   local mapOnly = (db and db.beacon and db.beacon.mapOnly) or false
+  local MAP_ONLY_H = 166  -- minimap 150 + 8 top/bottom; equals original height (design 10.2)
 
-  for _, widget in ipairs({ frame.pullBadge, frame.statusText, frame.infoText, frame.progressBar, frame.upcomingText }) do
+  for _, widget in ipairs({ frame.pullBadge, frame.statusText, frame.infoText, frame.progressBar,
+                            frame.cooldownIconsRow, frame.upcomingIconsRow }) do
     if widget then widget:SetShown(not mapOnly) end
+  end
+
+  -- upcomingText: hidden in mapOnly, OR when the cooldown-plan rows are visible
+  -- (the next-pull icon row functionally replaces it; design 10.2). This is the second
+  -- intentional modification to NPT's own visibility logic.
+  if frame.upcomingText then
+    local cooldownPlanActive = (db and db.beacon and db.beacon.showCooldownPlan) and frame.cooldownIconsRow
+    frame.upcomingText:SetShown(not mapOnly and not cooldownPlanActive)
   end
 
   -- Portraits are normally shown/hidden by the per-pull render; in map-only we
@@ -643,6 +677,7 @@ local function applyLayoutMode(frame)
   end
 
   frame:SetWidth(mapOnly and MAP_ONLY_W or FRAME_BASE_W)
+  frame:SetHeight(mapOnly and MAP_ONLY_H or FRAME_BASE_H)
 end
 
 MDT_NPT.BeaconFrame = {

@@ -1,0 +1,19 @@
+local L = MDT_NPT.L
+local locale = GetLocale()
+if locale ~= "zhCN" then return end
+
+L["Edit Cooldown Plan"] = "编辑冷却计划"
+L["Show Cooldown Plan"] = "显示冷却计划"
+L["Use"] = "开"
+L["Save"] = "留"
+L["Not Planned"] = "未规划"
+L["Pull Mismatch"] = "波次内容已变化，计划可能失效"
+L["Cooldown Ready"] = "就绪"
+L["Cooldown Remaining"] = "剩余 %ds"
+L["No Valid Route"] = "当前路线无有效 ID，计划功能不可用"
+L["Drag Potion Here"] = "拖入药水"
+L["Burst Potion"] = "爆发药水"
+L["Ascendance"] = "升腾"
+L["Spiritwalker's Grace"] = "灵魂行走"
+L["Apply"] = "应用"
+L["Potion Not Specified"] = "未指定"

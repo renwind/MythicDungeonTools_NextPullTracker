@@ -1,0 +1,15 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+  <!-- Cooldown plan editor panel (design 7.2). Mixin defined in CooldownPlanEditor.lua
+       (this .lua MUST load before this .xml so the mixin global exists at XML parse). -->
+  <Frame name="MDTNPTCooldownPlanTemplate" virtual="true" mixin="MDTNPTCooldownPlanMixin" inherits="BackdropTemplate" toplevel="true" parent="UIParent" hidden="true" enableMouse="true" frameStrata="HIGH">
+    <Size x="420" y="340"/>
+    <Anchors>
+      <Anchor point="CENTER"/>
+    </Anchors>
+    <Scripts>
+      <OnLoad method="OnLoad"/>
+      <OnShow method="OnShow"/>
+      <OnHide method="OnHide"/>
+    </Scripts>
+  </Frame>
+</Ui>

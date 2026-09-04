@@ -33,6 +33,9 @@ local defaultSavedVars = {
       -- When true, the beacon shrinks to just the minimap and hides the info
       -- panel (pull header, mob count, portraits, progress bar, upcoming).
       mapOnly = false,
+      -- Independent visibility switch for the cooldown-plan icon rows (design 12.2).
+      -- Default off; when on, the Beacon shows even for non-tanks.
+      showCooldownPlan = false,
       -- Per-state colors for the minimap pull DOTS. {r, g, b, a}. Keys match
       -- BeaconMinimap's pull states.
       pullColors = {
@@ -64,6 +67,11 @@ local defaultSavedVars = {
       scale = 1.0,
       locked = false,
     },
+    -- Cooldown plan data, char-scoped (design 5.1). MUST stay under `char`
+    -- (AceDB validateDefaults rejects unknown top-level keys).
+    cooldownPlans = {},
+    cooldownPotionID = 241308,   -- burst potion itemID default (Light's Potential ilvl295)
+    _cooldownPlanVersion = 1,    -- migration version marker (design 5.4)
   },
 }
 
@@ -208,6 +216,10 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
       local childDB = LibStub("AceDB-3.0"):New("MythicDungeonToolsNextPullDB", defaultSavedVars, true)
       db = childDB.global
       dbChar = childDB.char
+      -- First-load plan init: fill cooldownPotionID from seed default + migration version (design 8.2/5.4).
+      if MDT_NPT.CooldownData then
+        MDT_NPT.CooldownData.InitializePlans(dbChar)
+      end
       eventFrame:UnregisterEvent("ADDON_LOADED")
     end
   elseif event == "CHALLENGE_MODE_START" then

@@ -1,4 +1,7 @@
 .vscode/
 .claude/
+.qoder/
 .release/
 *.zip
+deploy/
+*.bak-*

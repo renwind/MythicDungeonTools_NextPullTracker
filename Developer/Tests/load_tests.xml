@@ -4,4 +4,5 @@
   <Script file='TestStartStop.lua'/>
   <Script file='TestMarkComplete.lua'/>
   <Script file='TestSkipTo.lua'/>
+  <Script file='CooldownPlanIntegration.lua'/>
 </Ui>

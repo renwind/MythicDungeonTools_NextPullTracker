@@ -174,6 +174,14 @@ function MDT_NPT:ToggleBeaconLock()
   if state then state.locked = not state.locked end
 end
 
+-- Open the cooldown plan editor (design 7.1). Late-deref of CooldownPlanEditor so the
+-- load order (Slash.lua loads before CooldownPlanEditor.lua) is safe at runtime.
+local function handlePlan()
+  if MDT_NPT.CooldownPlanEditor then
+    MDT_NPT.CooldownPlanEditor:Open()
+  end
+end
+
 -- ============ command table ============
 
 commands = {
@@ -186,6 +194,7 @@ commands = {
   { name = "show",     usage = "show",        help = "enable and show the beacon HUD",                    handler = handleShow },
   { name = "hide",     usage = "hide",        help = "disable and hide the beacon HUD",                   handler = handleHide },
   { name = "settings", usage = "settings",    help = "open the settings panel",                           handler = handleSettings },
+  { name = "plan",     usage = "plan",        help = "open the cooldown plan editor",                     handler = handlePlan },
   { name = "test",     usage = "test",        help = "run the integration test suite",                    handler = handleTest },
   { name = "help",     usage = "help",        help = "show this help message",                            handler = printHelp },
 }

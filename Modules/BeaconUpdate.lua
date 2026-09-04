@@ -25,8 +25,10 @@ function Beacon:Update()
     return
   end
 
-  -- Role check: hide for non-tanks unless overridden or user manually started tracking
-  if not db.beacon.showForNonTank and not state.manuallyStarted then
+  -- Role check: hide for non-tanks unless overridden or user manually started tracking.
+  -- showCooldownPlan (design 12.2) also forces visibility for non-tanks (first of the two
+  -- intentional modifications to NPT's own logic).
+  if not db.beacon.showForNonTank and not db.beacon.showCooldownPlan and not state.manuallyStarted then
     local role = Wow and Wow.getPlayerRole and Wow.getPlayerRole() or nil
     if role ~= "TANK" then
       Beacon:Hide()
@@ -125,6 +127,11 @@ function Beacon:Update()
   end
   BeaconMinimap.updateMinimapDots(frame, state, pulls, enemies, sublevel)
   BeaconMinimap.drawCurrentPullOutline(frame, pull, sublevel, enemies, pullState and pullState.state)
+
+  -- Cooldown plan icon rows (design 11.1): render before Show so layout is final.
+  if MDT_NPT.CooldownPlanRender then
+    MDT_NPT.CooldownPlanRender:Render(frame, state, preset, nextPull)
+  end
 
   Beacon:Show()
 end
