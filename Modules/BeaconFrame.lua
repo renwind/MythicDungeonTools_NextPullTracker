@@ -726,6 +726,8 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     nm:SetText(fitLabel(shortEnemyName(zh) or "", PORTRAIT_LABEL_MAX_CHARS))
     local mc = MOB_COLORS[staticMobType(enemy)] or MOB_COLORS.other
     nm:SetTextColor(mc[1], mc[2], mc[3], 1)
+    -- Tint the white circle ring around the portrait with the same mob-type color.
+    frame.portraitOutlines[i]:SetVertexColor(mc[1], mc[2], mc[3], 1)
     nm:Show()
     if frame.portraitHovers and frame.portraitHovers[i] then
       frame.portraitHovers[i].mobName = rawName and (zh or rawName) or nil

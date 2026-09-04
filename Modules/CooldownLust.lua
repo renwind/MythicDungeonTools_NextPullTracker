@@ -1,6 +1,7 @@
 local MDT_NPT = MDT_NPT
 
--- CooldownLust: bloodlust monitor shown to the RIGHT of the cooldown-plan icon row.
+-- CooldownLust: bloodlust monitor shown at the LEFT end of the cooldown-plan icon
+-- row (where the plan icons used to start; plan icons are now right-aligned).
 -- Shows when bloodlust becomes usable/effective again = max(sated-family debuff remaining,
 -- own bloodlust CD remaining), to avoid casting bloodlust while sated.
 -- Reference: GearInsight KeyTimeline.lua lustReadyIn().
@@ -54,7 +55,7 @@ end
 local function ensureLustFrame(parent)
   if parent.lustFrame then return parent.lustFrame end
   local f = CreateFrame("Frame", nil, parent)
-  f:SetSize(24, 24)
+  f:SetSize(36, 36)  -- 1.5x the 24px plan icon size
   f.icon = f:CreateTexture(nil, "ARTWORK")
   f.icon:SetAllPoints(f)
   f.text = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -69,12 +70,12 @@ end
 
 local ticker
 
--- Update the lust indicator anchored to the right of the current-pull icon row.
+-- Update the lust indicator anchored to the left end of the current-pull icon row.
 function Lust:Update(rowFrame)
   if not rowFrame then return end
   local f = ensureLustFrame(rowFrame)
   f:ClearAllPoints()
-  f:SetPoint("TOPLEFT", rowFrame, "TOPRIGHT", 4, 0)
+  f:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", 0, 0)
   local ready, sid = lustReadyIn()
   local icon = sid and C_Spell.GetSpellTexture(sid) or "Interface\\ICONS\\Spell_Shaman_Bloodlust"
   f.icon:SetTexture(icon or "Interface\\ICONS\\Spell_Shaman_Bloodlust")

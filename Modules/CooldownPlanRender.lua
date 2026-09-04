@@ -93,7 +93,9 @@ local function layoutRow(row, count, size)
   for i = 1, count do
     local cell = row.cells[i]
     cell:ClearAllPoints()
-    cell:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * (size + 14), 0)
+    -- Right-aligned to the window: entry 1 hugs the row's right edge, later
+    -- entries stack leftwards (right-to-left: e.g. Ascendance, then Potion).
+    cell:SetPoint("TOPRIGHT", row, "TOPRIGHT", -((i - 1) * (size + 14)), 0)
     cell:Show()
   end
 end
