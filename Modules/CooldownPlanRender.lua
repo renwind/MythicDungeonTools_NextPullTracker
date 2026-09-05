@@ -192,6 +192,75 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
   end
 end
 
+-- Dispel preview: does any enemy in the pull carry a curse / poison spell flag
+-- (same flags MDT's enemy info shows as small icons)? Aggregated from MDT static data.
+local function pullHasDispel(pull, enemies)
+  local curse, poison = false, false
+  if pull and enemies then
+    for enemyIndex in pairs(pull) do
+      local e = enemies[tonumber(enemyIndex)]
+      if e and e.spells then
+        for _, flags in pairs(e.spells) do
+          if flags then
+            if flags.curse then curse = true end
+            if flags.poison then poison = true end
+          end
+        end
+      end
+    end
+  end
+  return curse, poison
+end
+
+-- Two-slot vertical stack (curse on top, poison below) reusing MDT's 16x16 atlases.
+local function ensureDispelFrame(row)
+  if row.dispelFrame then return row.dispelFrame end
+  local f = CreateFrame("Frame", nil, row)
+  f:SetSize(16, 34)
+  f.curse = f:CreateTexture(nil, "OVERLAY")
+  f.curse:SetSize(16, 16)
+  f.curse:SetAtlas("icons_16x16_curse")
+  f.curse:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+  f.curse:Hide()
+  f.poison = f:CreateTexture(nil, "OVERLAY")
+  f.poison:SetSize(16, 16)
+  f.poison:SetAtlas("icons_16x16_poison")
+  f.poison:SetPoint("TOPLEFT", f.curse, "BOTTOMLEFT", 0, -2)
+  f.poison:Hide()
+  f:Hide()
+  row.dispelFrame = f
+  return f
+end
+
+local function updateDispels(row, pull, enemies)
+  if not row then return end
+  local f = ensureDispelFrame(row)
+  f:ClearAllPoints()
+  if row.lustFrame then
+    f:SetPoint("TOPLEFT", row.lustFrame, "TOPRIGHT", 4, 0)
+  else
+    f:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+  end
+  local curse, poison = pullHasDispel(pull, enemies)
+  if curse then f.curse:Show() else f.curse:Hide() end
+  if poison then
+    f.poison:ClearAllPoints()
+    if curse then
+      f.poison:SetPoint("TOPLEFT", f.curse, "BOTTOMLEFT", 0, -2)
+    else
+      f.poison:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    end
+    f.poison:Show()
+  else
+    f.poison:Hide()
+  end
+  if curse or poison then f:Show() else f:Hide() end
+end
+
+local function hideDispels(row)
+  if row and row.dispelFrame then row.dispelFrame:Hide() end
+end
+
 -- Main render entry, called from Beacon:Update (design 11.1).
 function Render:Render(frame, state, preset, nextPull)
   local dbChar = MDT_NPT:GetDBChar()
@@ -211,6 +280,7 @@ function Render:Render(frame, state, preset, nextPull)
       end
     end
     if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Hide(showRow) end
+    hideDispels(showRow)
     return
   end
 
@@ -219,6 +289,7 @@ function Render:Render(frame, state, preset, nextPull)
   if not uid or not pullIndex then
     showRow:Hide(); nextRow:Hide()
     if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Hide(showRow) end
+    hideDispels(showRow)
     return
   end
 
@@ -233,6 +304,8 @@ function Render:Render(frame, state, preset, nextPull)
   fillRow(showRow, entries, dbChar, mismatch, ICON_SIZE, true)
   -- bloodlust monitor to the right of the current-pull row
   if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Update(showRow) end
+  -- curse/poison preview to the right of the bloodlust monitor
+  updateDispels(showRow, pull, enemies)
 
   -- next-pull preview row (design 11.4): nextPull+1, smaller, no CD
   local nextIndex = (nextPull or pullIndex) + 1
