@@ -91,7 +91,7 @@ function Lust:Update(rowFrame)
   f.icon:SetTexture(icon or "Interface\\ICONS\\Spell_Shaman_Bloodlust")
   if ready > 0 then
     f.icon:SetVertexColor(1, 1, 1, 1)
-    f.icon:SetAlpha(0.6)
+    f.icon:SetAlpha(1)  -- stay opaque; the red countdown text carries the "not ready" state
     f.text:SetText(formatReady(ready))
     f.text:SetTextColor(1, 0.3, 0.3, 1)  -- red: not usable yet (sated / on CD)
   else
@@ -108,7 +108,7 @@ function Lust:Update(rowFrame)
         rowFrame.lustFrame.icon:SetTexture(ic or "Interface\\ICONS\\Spell_Shaman_Bloodlust")
         if r2 > 0 then
           rowFrame.lustFrame.icon:SetVertexColor(1, 1, 1, 1)
-          rowFrame.lustFrame.icon:SetAlpha(0.6)
+          rowFrame.lustFrame.icon:SetAlpha(1)
           rowFrame.lustFrame.text:SetText(formatReady(r2))
           rowFrame.lustFrame.text:SetTextColor(1, 0.3, 0.3, 1)
         else

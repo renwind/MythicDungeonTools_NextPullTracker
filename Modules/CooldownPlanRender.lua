@@ -73,10 +73,11 @@ local function ensureCells(row, count, size)
       cell.cd = CreateFrame("Cooldown", nil, cell, "CooldownFrameTemplate")
       cell.cd:SetAllPoints(cell)
       cell.label = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-      cell.label:SetPoint("BOTTOM", cell, "BOTTOM", 0, 0)
-      -- bold-ish + outline for readability over icons
+      cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -1)  -- below the icon so it never covers it
+      -- bold-ish + outline for readability over icons; the small next-pull row uses 2/3 size
       local lf, ls, _ = cell.label:GetFont()
-      if lf then cell.label:SetFont(lf, ls + 1, "OUTLINE") end
+      local labelSize = (size <= NEXT_ICON_SIZE) and math.floor((ls + 1) * 2 / 3 + 0.5) or (ls + 1)
+      if lf then cell.label:SetFont(lf, labelSize, "OUTLINE") end
       cell.label:SetShadowColor(0, 0, 0, 1)
       cell.label:SetShadowOffset(1, -1)
       row.cells[i] = cell
@@ -89,13 +90,18 @@ local function ensureCells(row, count, size)
   end
 end
 
-local function layoutRow(row, count, size)
+local function layoutRow(row, count, size, parentSize)
+  local ps = parentSize or size
+  local p = ps + 14
+  local inset = (ps - size) / 2  -- center smaller icons under the parent row's columns
   for i = 1, count do
     local cell = row.cells[i]
     cell:ClearAllPoints()
     -- Right-aligned to the window: entry 1 hugs the row's right edge, later
     -- entries stack leftwards (right-to-left: e.g. Ascendance, then Potion).
-    cell:SetPoint("TOPRIGHT", row, "TOPRIGHT", -((i - 1) * (size + 14)), 0)
+    -- parentSize lets the smaller next-pull row share the current row's columns
+    -- with matching icon center x.
+    cell:SetPoint("TOPRIGHT", row, "TOPRIGHT", -((i - 1) * p + inset), 0)
     cell:Show()
   end
 end
@@ -117,9 +123,9 @@ local function startCDTicker(cell, getCDID)
   end)
 end
 
-local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx)
+local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, parentSize)
   ensureCells(row, #entries, size)
-  layoutRow(row, #entries, size)
+  layoutRow(row, #entries, size, parentSize)
   for i, entry in ipairs(entries) do
     local cell = row.cells[i]
     local _, icon, cdID = resolveEntry(entry, dbChar)
@@ -234,7 +240,7 @@ function Render:Render(frame, state, preset, nextPull)
   if nextIndex <= pullCount then
     local nextEntries = CooldownData.getActiveEntries(dbChar, uid, nextIndex)
     nextRow:Show()
-    fillRow(nextRow, nextEntries, dbChar, false, NEXT_ICON_SIZE, false)
+    fillRow(nextRow, nextEntries, dbChar, false, NEXT_ICON_SIZE, false, nil, ICON_SIZE)
   else
     nextRow:Hide()
   end

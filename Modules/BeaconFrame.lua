@@ -76,9 +76,9 @@ local function staticMobType(enemy)
   return "other"
 end
 
-local FRAME_BASE_W, FRAME_BASE_H = 360, 224  -- fixed height: the portrait area always
-                                             -- reserves the 2x4 grid + name labels, so
-                                             -- the window never resizes between pulls
+local FRAME_BASE_W, FRAME_BASE_H = 418, 234  -- wider minimap viewport (208) + 184 info panel;
+                                             -- height reserves the 2x4 portrait grid plus
+                                             -- plan rows whose 开/留 labels sit below icons
 local SCALE_MIN, SCALE_MAX = 0.5, 2.0
 
 -- The old global MouseIsOver helper is no longer available in WoW 12.1.
@@ -163,7 +163,7 @@ local function create()
 
   -- === Beacon Frame ===
   local beaconFrame = CreateFrame("Frame", "MDTNextPullBeaconFrame", UIParent)
-  beaconFrame:SetSize(360, 196)
+  beaconFrame:SetSize(FRAME_BASE_W, FRAME_BASE_H)
   beaconFrame:SetFrameStrata("MEDIUM")
   beaconFrame:SetClampedToScreen(true)
   beaconFrame:SetMovable(true)
@@ -196,7 +196,7 @@ local function create()
   createBeaconEdge("TOPRIGHT", "BOTTOMRIGHT", 1, false)
 
   -- === MINIMAP ===
-  -- Viewport (fixed size, clips the scrollable container so only a 150x150 window is visible)
+  -- Viewport (fixed size, clips the scrollable container so only a SIZE x SIZE window is visible)
   beaconFrame.minimapFrame = CreateFrame("Frame", nil, beaconFrame)
   beaconFrame.minimapFrame:SetSize(Minimap.SIZE, Minimap.SIZE)
   beaconFrame.minimapFrame:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", 8, -8)
@@ -295,7 +295,7 @@ local function create()
 
   -- === Information panel (right side of the beacon) ===
   local infoPanelX = Minimap.SIZE + 16
-  local infoPanelWidth = 360 - infoPanelX - 10
+  local infoPanelWidth = FRAME_BASE_W - infoPanelX - 10
 
   -- Pull number badge
   local infoPanelPullBadge = beaconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -305,13 +305,13 @@ local function create()
 
   -- Status text (NEXT / IN COMBAT / ROUTE COMPLETE...)
   local infoPanelStatusText = beaconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  infoPanelStatusText:SetPoint("TOPLEFT", infoPanelPullBadge, "BOTTOMLEFT", 0, -2)
+  infoPanelStatusText:SetPoint("TOPRIGHT", beaconFrame, "TOPRIGHT", -10, -10)
   infoPanelStatusText:SetTextColor(0.8, 0.8, 0.8, 1)
   beaconFrame.statusText = infoPanelStatusText
 
   -- Mob count + forces next info text
   local mobAndForceInfoText = beaconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  mobAndForceInfoText:SetPoint("TOPLEFT", infoPanelStatusText, "BOTTOMLEFT", 0, -2)
+  mobAndForceInfoText:SetPoint("TOPLEFT", infoPanelPullBadge, "BOTTOMLEFT", 0, -2)
   mobAndForceInfoText:SetTextColor(1, 1, 1, 1)
   beaconFrame.infoText = mobAndForceInfoText
 
@@ -382,15 +382,15 @@ local function create()
   beaconFrame.upcomingText = upcomingText
 
   -- Cooldown plan icon rows (design 10.1/16.2): current-pull row (24px) + next-pull
-  -- preview row (16px). Anchored at infoPanelX=166; fixed y to avoid portrait-row jitter.
-  local infoPanelX = 166
+  -- preview row (16px). Fixed y (-144, matches COOLDOWN_ROW_Y) so the portrait area
+  -- never jitters; the extra -16 gap leaves room for the 开/留 labels under the icons.
   local cooldownIconsRow = CreateFrame("Frame", nil, beaconFrame)
-  cooldownIconsRow:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", infoPanelX, -134)
-  cooldownIconsRow:SetSize(184, 24)
+  cooldownIconsRow:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", infoPanelX, -144)
+  cooldownIconsRow:SetSize(infoPanelWidth, 24)
   beaconFrame.cooldownIconsRow = cooldownIconsRow
   local upcomingIconsRow = CreateFrame("Frame", nil, beaconFrame)
-  upcomingIconsRow:SetPoint("TOPLEFT", cooldownIconsRow, "BOTTOMLEFT", 0, -4)
-  upcomingIconsRow:SetSize(184, 16)
+  upcomingIconsRow:SetPoint("TOPLEFT", cooldownIconsRow, "BOTTOMLEFT", 0, -16)
+  upcomingIconsRow:SetSize(infoPanelWidth, 16)
   beaconFrame.upcomingIconsRow = upcomingIconsRow
 
   -- === Beacon Actions ===
@@ -633,19 +633,19 @@ local function renderCurrentPullContribution(frame, basePercentage, pullPercenta
 end
 
 local PORTRAIT_MAX = 8
-local PORTRAIT_TOP_Y = -70
+local PORTRAIT_TOP_Y = -56
 local PORTRAIT_PER_ROW = 4
 local PORTRAIT_ROW_GAP = 4
 local PORTRAIT_LABEL_H = 12        -- vertical band reserved for the short-name label under each portrait
 local PORTRAIT_LABEL_MAX_CHARS = 5 -- CJK chars that fit a portrait column at the 6px label font
-local COOLDOWN_ROW_Y = -158        -- cooldown icon row top: below the always-reserved 2x4 portrait grid + labels
+local COOLDOWN_ROW_Y = -144        -- cooldown icon row top: below the always-reserved 2x4 portrait grid + labels
 
 ---Frame height is constant (the portrait area always reserves the 2x4 grid), except
 ---in map-only mode where the info panel is hidden entirely.
 local function syncFrameHeight(frame)
   local db = MDT_NPT:GetDB()
   local mapOnly = (db and db.beacon and db.beacon.mapOnly) or false
-  local MAP_ONLY_H = 166
+  local MAP_ONLY_H = Minimap.SIZE + 16
   frame:SetHeight(mapOnly and MAP_ONLY_H or FRAME_BASE_H)
 end
 

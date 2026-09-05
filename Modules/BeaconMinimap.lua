@@ -5,7 +5,7 @@ local math_max, math_min, math_huge = math.max, math.min, math.huge
 local math_cos, math_sin, math_pi = math.cos, math.sin, math.pi
 local table_sort = table.sort
 
-local SIZE = 150                -- viewport width/height in pixels
+local SIZE = 208                -- viewport width/height in pixels
 local GRID_COLS = 15
 local GRID_ROWS = 10
 local BASE_TILE = 840 / GRID_COLS -- 56 world units per tile in MDT's native coord space
