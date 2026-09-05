@@ -8,6 +8,40 @@ local Theme = MDT_NPT.Theme
 -- Reference: GearInsight KeyTimeline.lua lustReadyIn().
 local Lust = {}
 
+local function getPixelSize(frame)
+  local scale = frame:GetEffectiveScale()
+  return 768 / (select(2, GetPhysicalScreenSize()) * scale)
+end
+
+local function createIconBorder(cell)
+  local px = getPixelSize(cell)
+  local r, g, b, a = 0, 0, 0, 1
+
+  cell.borderTop = cell:CreateTexture(nil, "OVERLAY", nil, 2)
+  cell.borderTop:SetColorTexture(r, g, b, a)
+  cell.borderTop:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 0)
+  cell.borderTop:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, 0)
+  cell.borderTop:SetHeight(px)
+
+  cell.borderBottom = cell:CreateTexture(nil, "OVERLAY", nil, 2)
+  cell.borderBottom:SetColorTexture(r, g, b, a)
+  cell.borderBottom:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 0, 0)
+  cell.borderBottom:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", 0, 0)
+  cell.borderBottom:SetHeight(px)
+
+  cell.borderLeft = cell:CreateTexture(nil, "OVERLAY", nil, 2)
+  cell.borderLeft:SetColorTexture(r, g, b, a)
+  cell.borderLeft:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, -px)
+  cell.borderLeft:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 0, px)
+  cell.borderLeft:SetWidth(px)
+
+  cell.borderRight = cell:CreateTexture(nil, "OVERLAY", nil, 2)
+  cell.borderRight:SetColorTexture(r, g, b, a)
+  cell.borderRight:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -px)
+  cell.borderRight:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", 0, px)
+  cell.borderRight:SetWidth(px)
+end
+
 -- Bloodlust-family buffs (first known wins). Reference: GearInsight LiveGuide LUST_BUFFS.
 local BLOODLUST_SPELLS = { 2825, 32182, 80353, 264667, 390386 }  -- 嗜血/英勇/时间扭曲/原始狂怒/飞龙振翅
 -- Sated-family debuffs (筋疲力尽/心满意足/时空错位/疲惫). Reference: GearInsight SATED.
@@ -67,8 +101,13 @@ local function ensureLustFrame(parent)
   if parent.lustFrame then return parent.lustFrame end
   local f = CreateFrame("Frame", nil, parent)
   f:SetSize(36, 36)  -- 1.5x the 24px plan icon size
+  f.bg = f:CreateTexture(nil, "BACKGROUND")
+  f.bg:SetAllPoints(f)
+  f.bg:SetColorTexture(0.06, 0.06, 0.06, 0.9)
   f.icon = f:CreateTexture(nil, "ARTWORK")
   f.icon:SetAllPoints(f)
+  f.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
+  createIconBorder(f)
   f.text = f:CreateFontString(nil, "OVERLAY", Theme.fonts.cdText)
   f.text:SetPoint("TOP", f, "BOTTOM", 0, 0)
   f.text:SetShadowColor(unpack(Theme.colors.shadow))
@@ -88,6 +127,7 @@ function Lust:Update(rowFrame)
   local ready, sid = lustReadyIn()
   local icon = sid and C_Spell.GetSpellTexture(sid) or "Interface\\ICONS\\Spell_Shaman_Bloodlust"
   f.icon:SetTexture(icon or "Interface\\ICONS\\Spell_Shaman_Bloodlust")
+  f.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
   if ready > 0 then
     f.icon:SetVertexColor(1, 1, 1, 1)
     f.icon:SetAlpha(1)  -- stay opaque; the red countdown text carries the "not ready" state
@@ -107,6 +147,7 @@ function Lust:Update(rowFrame)
         local r2, sid2 = lustReadyIn()
         local ic = sid2 and C_Spell.GetSpellTexture(sid2) or "Interface\\ICONS\\Spell_Shaman_Bloodlust"
         rowFrame.lustFrame.icon:SetTexture(ic or "Interface\\ICONS\\Spell_Shaman_Bloodlust")
+        rowFrame.lustFrame.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
         if r2 > 0 then
           rowFrame.lustFrame.icon:SetVertexColor(1, 1, 1, 1)
           rowFrame.lustFrame.icon:SetAlpha(1)
