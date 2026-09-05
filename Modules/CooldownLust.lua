@@ -52,6 +52,16 @@ local function lustReadyIn()
   return r, sid
 end
 
+local function formatReady(r)
+  if r > 60 then
+    -- round to nearest 0.5m (30s): 90s -> 1.5m, 100s -> 1.5m, 140s -> 2.5m
+    local halves = math.floor(r / 30 + 0.5)
+    if halves % 2 == 0 then return string.format("%dm", halves / 2) end
+    return string.format("%d.5m", (halves - 1) / 2)
+  end
+  return string.format("%d", math.ceil(r))
+end
+
 local function ensureLustFrame(parent)
   if parent.lustFrame then return parent.lustFrame end
   local f = CreateFrame("Frame", nil, parent)
@@ -82,7 +92,7 @@ function Lust:Update(rowFrame)
   if ready > 0 then
     f.icon:SetVertexColor(1, 1, 1, 1)
     f.icon:SetAlpha(0.6)
-    f.text:SetText(string.format("%d", math.ceil(ready)))
+    f.text:SetText(formatReady(ready))
     f.text:SetTextColor(1, 0.3, 0.3, 1)  -- red: not usable yet (sated / on CD)
   else
     f.icon:SetVertexColor(0.6, 1, 0.6, 1)
@@ -99,7 +109,7 @@ function Lust:Update(rowFrame)
         if r2 > 0 then
           rowFrame.lustFrame.icon:SetVertexColor(1, 1, 1, 1)
           rowFrame.lustFrame.icon:SetAlpha(0.6)
-          rowFrame.lustFrame.text:SetText(string.format("%d", math.ceil(r2)))
+          rowFrame.lustFrame.text:SetText(formatReady(r2))
           rowFrame.lustFrame.text:SetTextColor(1, 0.3, 0.3, 1)
         else
           rowFrame.lustFrame.icon:SetVertexColor(0.6, 1, 0.6, 1)
