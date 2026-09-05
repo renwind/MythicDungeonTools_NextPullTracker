@@ -1,5 +1,6 @@
 local MDT_NPT = MDT_NPT
 local L = MDT_NPT.L
+local Theme = MDT_NPT.Theme
 
 -- Custom settings widget for the per-state pull colors. Layout, top to bottom:
 --   * a small minimap-style preview (display only) showing the next/active/
@@ -33,8 +34,8 @@ local PREVIEW_STATES = {
   { key = "unselected", ring = false },
 }
 
-local CIRCLE_TEX = "Interface\\AddOns\\MythicDungeonTools\\Textures\\Circle_White"
-local BOX_COLOR = { 0.06, 0.06, 0.06, 1 } -- preview backdrop; ring "hole" matches it
+local CIRCLE_TEX = Theme.textures.circleWhite
+local BOX_COLOR = Theme.colors.settingsBoxBg
 local DOT_OFFSETS = { { 0, 0 }, { 6, 3 }, { -5, 4 }, { 4, -5 }, { -5, -4 } }
 
 -- Layout constants. LEFT_MARGIN matches the inset Blizzard's settings controls
@@ -69,7 +70,7 @@ function MDTNPTPullColorsMixin:CreateSwatch(dbKey, stateKey, x, y)
   local border = swatch:CreateTexture(nil, "BACKGROUND")
   border:SetPoint("TOPLEFT", -1, 1)
   border:SetPoint("BOTTOMRIGHT", 1, -1)
-  border:SetColorTexture(0, 0, 0, 1)
+  border:SetColorTexture(unpack(Theme.colors.swatchBorder))
 
   local fill = swatch:CreateTexture(nil, "ARTWORK")
   fill:SetAllPoints()
@@ -134,17 +135,17 @@ function MDTNPTPullColorsMixin:OnLoad()
   end
 
   -- Column headers for the swatch grid.
-  local dotsHeader = self:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  local dotsHeader = self:CreateFontString(nil, "ARTWORK", Theme.fonts.highlightSmall)
   dotsHeader:SetPoint("LEFT", self, "TOPLEFT", DOT_X, HEADER_Y)
   dotsHeader:SetText(L["Dots"])
-  local outlineHeader = self:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  local outlineHeader = self:CreateFontString(nil, "ARTWORK", Theme.fonts.highlightSmall)
   outlineHeader:SetPoint("LEFT", self, "TOPLEFT", OUTLINE_X, HEADER_Y)
   outlineHeader:SetText(L["Outline"])
 
   -- One row per editable state.
   for i, ctrl in ipairs(CONTROLS) do
     local y = ROWS_TOP - (i - 1) * ROW_H
-    local label = self:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    local label = self:CreateFontString(nil, "ARTWORK", Theme.fonts.normal)
     label:SetPoint("LEFT", self, "TOPLEFT", LABEL_X, y - SWATCH / 2)
     label:SetText(L[ctrl.labelKey])
 

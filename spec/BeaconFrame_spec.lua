@@ -5,6 +5,7 @@ describe("BeaconFrame.lua", function()
 
   before_each(function()
     mocks.reset()
+    mocks.loadSource("Modules/Theme.lua")
     -- BeaconFrame captures MDT_NPT.BeaconMinimap at module-load time (for Minimap.drawCurrentPullOutline).
     mocks.loadSource("Modules/BeaconMinimap.lua")
     mocks.loadSource("Modules/BeaconFrame.lua")
@@ -49,7 +50,8 @@ describe("BeaconFrame.lua", function()
       local frame = makeHeaderFrame()
       BeaconFrame.renderPullHeader(frame, 2, { state = "next" }, 5)
       assert.equals("Next", frame.statusText.text)
-      assert.same({ 0, 1, 0.5, 1 }, frame.statusText.color)
+      local accent = _G.MDT_NPT.Theme.colors.accent
+      assert.same(accent, frame.statusText.color)
     end)
   end)
 

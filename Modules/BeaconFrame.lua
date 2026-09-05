@@ -7,6 +7,7 @@ local Minimap = MDT_NPT.BeaconMinimap
 local PullState = MDT_NPT.PullState
 local pairs, ipairs, unpack, string_format, tonumber = pairs, ipairs, unpack, string.format, tonumber
 local math_abs = math.abs
+local Theme = MDT_NPT.Theme
 
 -- MDT's AceLocale table (zhCN contains English->Chinese enemy names).
 -- MDT UI is load-on-demand, so its locale may not be registered at Start; use silent=true
@@ -50,10 +51,10 @@ end
 -- also forces boss. Priority: boss > elite > caster (interruptible spell) > other.
 -- Tints the portrait short-name label.
 local MOB_COLORS = {
-  caster   = { 0x4C / 255, 0xE0 / 255, 0xD2 / 255 },
-  miniboss = { 0x6E / 255, 0x24 / 255, 0xEC / 255 },
-  boss     = { 0xEB / 255, 0x84 / 255, 0x26 / 255 },
-  other    = { 0xAE / 255, 0x12 / 255, 0x00 / 255 },
+  caster   = Theme.colors.mobCaster,
+  miniboss = Theme.colors.mobMiniboss,
+  boss     = Theme.colors.mobBoss,
+  other    = Theme.colors.mobOther,
 }
 
 ---Static caster signal from MDT: Enemy Info lists the mob's spells; any spell flagged
@@ -177,23 +178,29 @@ local function create()
 
   local background = beaconFrame:CreateTexture(nil, "BACKGROUND")
   background:SetAllPoints()
-  background:SetColorTexture(unpack(MDT.BackdropColor or { 0.058, 0.058, 0.058, 0.9 }))
+  background:SetColorTexture(unpack(MDT.BackdropColor or Theme.colors.panelBg))
+  beaconFrame._bgTexture = background
 
-  -- Frame border: thin edges anchored to both corners so they track the frame
-  -- width when it toggles between the full and map-only layouts.
-  local function createBeaconEdge(p1, p2, thickness, horizontal)
-    local edge = beaconFrame:CreateTexture(nil, "BORDER")
-    edge:SetColorTexture(0.3, 0.3, 0.3, 0.8)
-    edge:SetPoint(p1)
-    edge:SetPoint(p2)
-    if horizontal then edge:SetHeight(thickness) else edge:SetWidth(thickness) end
-    return edge
+  -- Frame border: 4×1px edges via Theme helper.
+  beaconFrame._borderTextures = Theme.CreateBorder(beaconFrame)
+
+  --- Re-apply panel background and border colours from the current Theme.
+  --- Called by Theme.Refresh() via the registered callback so EUI colour
+  --- changes propagate without a /reload.
+  function beaconFrame:RefreshChrome()
+    local bgC = Theme.colors.panelBg
+    if self._bgTexture then
+      self._bgTexture:SetColorTexture(bgC[1], bgC[2], bgC[3], bgC[4])
+    end
+    Theme.UpdateBorder(self._borderTextures)
   end
 
-  createBeaconEdge("TOPLEFT", "TOPRIGHT", 1, true)
-  createBeaconEdge("BOTTOMLEFT", "BOTTOMRIGHT", 1, true)
-  createBeaconEdge("TOPLEFT", "BOTTOMLEFT", 1, false)
-  createBeaconEdge("TOPRIGHT", "BOTTOMRIGHT", 1, false)
+  -- Register so Theme.Refresh() automatically re-skins this frame.
+  Theme.RegisterRefreshCallback(function()
+    if beaconFrame and beaconFrame.RefreshChrome then
+      beaconFrame:RefreshChrome()
+    end
+  end)
 
   -- === MINIMAP ===
   -- Viewport (fixed size, clips the scrollable container so only a SIZE x SIZE window is visible)
@@ -210,7 +217,7 @@ local function create()
   -- Dark background so the viewport is visible even before tiles load
   local minimapBackground = beaconFrame.minimapFrame:CreateTexture(nil, "BACKGROUND")
   minimapBackground:SetAllPoints()
-  minimapBackground:SetColorTexture(0.02, 0.02, 0.02, 1)
+  minimapBackground:SetColorTexture(unpack(Theme.colors.minimapBg))
 
   -- Scrollable container holding all 15x10 tiles; panned by centerOnPull.
   -- Size and tile positioning are set dynamically each render by BeaconMinimap.applyZoom.
@@ -243,23 +250,12 @@ local function create()
   -- Minimap border overlay
   local minimapBorder = beaconFrame.minimapFrame:CreateTexture(nil, "OVERLAY")
   minimapBorder:SetAllPoints()
-  minimapBorder:SetColorTexture(0, 1, 0.5, 0.5)
+  minimapBorder:SetColorTexture(Theme.colors.accent[1], Theme.colors.accent[2], Theme.colors.accent[3], 0.5)
   -- Hollow rectangle effect using 4 thin textures is nicer but simpler to skip
   -- We'll just use a thin colored overlay that wraps - actually let's just do a thin border
   minimapBorder:Hide()
 
-  local function createEdge(edgeAnchor, width, height, offsetX, offsetY)
-    local edge = beaconFrame.minimapFrame:CreateTexture(nil, "OVERLAY")
-    edge:SetSize(width, height)
-    edge:SetPoint(edgeAnchor, beaconFrame.minimapFrame, edgeAnchor, offsetX, offsetY)
-    edge:SetColorTexture(0.4, 0.4, 0.4, 0.9)
-    return edge
-  end
-
-  createEdge("TOPLEFT", Minimap.SIZE, 1, 0, 0)
-  createEdge("BOTTOMLEFT", Minimap.SIZE, 1, 0, 0)
-  createEdge("TOPLEFT", 1, Minimap.SIZE, 0, 0)
-  createEdge("TOPRIGHT", 1, Minimap.SIZE, 0, 0)
+  Theme.CreateBorder(beaconFrame.minimapFrame)
 
   -- Zoom buttons (bottom-right corner of minimap)
   local function createZoomButton(label, offsetY, delta)
@@ -267,22 +263,7 @@ local function create()
     btn:SetSize(16, 16)
     btn:SetPoint("BOTTOMRIGHT", beaconFrame.minimapFrame, "BOTTOMRIGHT", -2, offsetY)
 
-    local bg = btn:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(0, 0, 0, 0.65)
-
-    local border = btn:CreateTexture(nil, "BORDER")
-    border:SetPoint("TOPLEFT", btn, "TOPLEFT", -1, 1)
-    border:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 1, -1)
-    border:SetColorTexture(0, 1, 0.5, 0.6)
-
-    local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    text:SetPoint("CENTER", btn, "CENTER", 0, 1)
-    text:SetText(label)
-    text:SetTextColor(0, 1, 0.5, 1)
-
-    btn:SetScript("OnEnter", function() bg:SetColorTexture(0.1, 0.4, 0.25, 0.9) end)
-    btn:SetScript("OnLeave", function() bg:SetColorTexture(0, 0, 0, 0.65) end)
+    local text = Theme.StyleButton(btn, label, Theme.fonts.large)
     btn:SetScript("OnClick", function()
       Minimap.adjustUserZoom(beaconFrame, delta)
       Beacon:Update()
@@ -298,21 +279,21 @@ local function create()
   local infoPanelWidth = FRAME_BASE_W - infoPanelX - 10
 
   -- Pull number badge
-  local infoPanelPullBadge = beaconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  local infoPanelPullBadge = beaconFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.large)
   infoPanelPullBadge:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", infoPanelX, -10)
-  infoPanelPullBadge:SetTextColor(0, 1, 0.5, 1)
+  infoPanelPullBadge:SetTextColor(unpack(Theme.colors.accent))
   beaconFrame.pullBadge = infoPanelPullBadge
 
   -- Status text (NEXT / IN COMBAT / ROUTE COMPLETE...)
-  local infoPanelStatusText = beaconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  local infoPanelStatusText = beaconFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
   infoPanelStatusText:SetPoint("TOPRIGHT", beaconFrame, "TOPRIGHT", -10, -10)
-  infoPanelStatusText:SetTextColor(0.8, 0.8, 0.8, 1)
+  infoPanelStatusText:SetTextColor(unpack(Theme.colors.textSecondary))
   beaconFrame.statusText = infoPanelStatusText
 
   -- Mob count + forces next info text
-  local mobAndForceInfoText = beaconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  local mobAndForceInfoText = beaconFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
   mobAndForceInfoText:SetPoint("TOPLEFT", infoPanelPullBadge, "BOTTOMLEFT", 0, -2)
-  mobAndForceInfoText:SetTextColor(1, 1, 1, 1)
+  mobAndForceInfoText:SetTextColor(unpack(Theme.colors.textPrimary))
   beaconFrame.infoText = mobAndForceInfoText
 
   -- Enemies portraits (up to 8, laid out by renderEnemiesPortraits per pull).
@@ -331,7 +312,7 @@ local function create()
     -- circular mask leaves a ~1px ring of white visible around it.
     local outline = beaconFrame:CreateTexture(nil, "BORDER")
     outline:SetTexture("Interface\\AddOns\\MythicDungeonTools\\Textures\\Circle_White")
-    outline:SetVertexColor(1, 1, 1, 1)
+    outline:SetVertexColor(unpack(Theme.colors.textPrimary))
     outline:SetPoint("CENTER", portrait, "CENTER", 0, 0)
     outline:Hide()
     beaconFrame.portraitOutlines[i] = outline
@@ -356,8 +337,8 @@ local function create()
   local progressBar = CreateFrame("StatusBar", nil, beaconFrame)
   progressBar:SetSize(infoPanelWidth, 8)
   progressBar:SetPoint("BOTTOMLEFT", beaconFrame, "BOTTOMLEFT", infoPanelX, 8)
-  progressBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-  progressBar:SetStatusBarColor(0, 1, 0.5, 0.8)
+  progressBar:SetStatusBarTexture(Theme.textures.statusBar)
+  progressBar:SetStatusBarColor(unpack(Theme.colors.accentBar))
   progressBar:SetMinMaxValues(0, 1)
   progressBar:SetValue(0)
   beaconFrame.progressBarWidth = infoPanelWidth
@@ -365,19 +346,19 @@ local function create()
 
   -- Preview overlay (showing what this pull will add)
   local previewOverlay = progressBar:CreateTexture(nil, "OVERLAY")
-  previewOverlay:SetColorTexture(1, 0.84, 0, 0.65)
+  previewOverlay:SetColorTexture(unpack(Theme.colors.progressPreview))
   previewOverlay:SetHeight(8)
   previewOverlay:Hide()
   beaconFrame.previewOverlay = previewOverlay
 
   local progressBarBackground = progressBar:CreateTexture(nil, "BACKGROUND")
   progressBarBackground:SetAllPoints()
-  progressBarBackground:SetColorTexture(0, 0, 0, 0.5)
+  progressBarBackground:SetColorTexture(unpack(Theme.colors.progressBg))
 
   -- Upcoming preview (next+1 pull)
-  local upcomingText = beaconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  local upcomingText = beaconFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
   upcomingText:SetPoint("BOTTOMLEFT", progressBar, "TOPLEFT", 0, 4)
-  upcomingText:SetTextColor(0.6, 0.6, 0.6, 1)
+  upcomingText:SetTextColor(unpack(Theme.colors.textMuted))
   upcomingText:SetScale(0.85)
   beaconFrame.upcomingText = upcomingText
 
@@ -588,10 +569,12 @@ local function renderPullHeader(frame, nextPull, pullState, totalPulls)
 
   if pullState.state == PullState.ACTIVE then
     frame.statusText:SetText(L["In Combat"])
-    frame.statusText:SetTextColor(1, 0.3, 0.3, 1)
+    local sc = Theme.colors.statusCombat
+    frame.statusText:SetTextColor(sc[1], sc[2], sc[3], sc[4])
   else
     frame.statusText:SetText(L["Next"])
-    frame.statusText:SetTextColor(0, 1, 0.5, 1)
+    local sn = Theme.colors.accent
+    frame.statusText:SetTextColor(sn[1], sn[2], sn[3], sn[4])
   end
 end
 
@@ -606,7 +589,8 @@ end
 local function updateProgressBar(frame, currentPct)
   local basePercentage = currentPct or 0
   frame.progressBar:SetValue(basePercentage / 100)
-  frame.progressBar:SetStatusBarColor(0, 0.75, 1, 0.8)
+  local pc = Theme.colors.progressCurrent
+  frame.progressBar:SetStatusBarColor(pc[1], pc[2], pc[3], pc[4])
 end
 
 
@@ -713,10 +697,8 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     local zh = (MDT_NPT.NPC_ZH and MDT_NPT.NPC_ZH[rawName]) or (getMDTLocale() and getMDTLocale()[rawName]) or (MDT.L and MDT.L[rawName])
     local nm = frame.portraitNames and frame.portraitNames[i]
     if not nm then
-      nm = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-      local lf, ls, _ = nm:GetFont()
-      if lf then nm:SetFont(lf, ls - 4, "OUTLINE") end
-      nm:SetShadowColor(0, 0, 0, 1)
+      nm = frame:CreateFontString(nil, "OVERLAY", Theme.fonts.npcName)
+      nm:SetShadowColor(unpack(Theme.colors.shadow))
       nm:SetShadowOffset(1, -1)
       frame.portraitNames = frame.portraitNames or {}
       frame.portraitNames[i] = nm

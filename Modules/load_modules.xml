@@ -4,6 +4,7 @@
 	<Script file='Slash.lua'/>
   <Script file='Mdt.lua' />
   <Script file='API.lua' />
+  <Script file='Theme.lua'/>
   <Script file='Beacon.lua'/>
   <Script file='BeaconState.lua'/>
   <Script file='BeaconMinimap.lua'/>

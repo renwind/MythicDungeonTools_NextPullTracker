@@ -1,4 +1,5 @@
 local MDT_NPT = MDT_NPT
+local Theme = MDT_NPT.Theme
 
 -- CooldownLust: bloodlust monitor shown at the LEFT end of the cooldown-plan icon
 -- row (where the plan icons used to start; plan icons are now right-aligned).
@@ -68,11 +69,9 @@ local function ensureLustFrame(parent)
   f:SetSize(36, 36)  -- 1.5x the 24px plan icon size
   f.icon = f:CreateTexture(nil, "ARTWORK")
   f.icon:SetAllPoints(f)
-  f.text = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  f.text = f:CreateFontString(nil, "OVERLAY", Theme.fonts.cdText)
   f.text:SetPoint("TOP", f, "BOTTOM", 0, 0)
-  local lf, ls, _ = f.text:GetFont()
-  if lf then f.text:SetFont(lf, ls + 1, "OUTLINE") end
-  f.text:SetShadowColor(0, 0, 0, 1)
+  f.text:SetShadowColor(unpack(Theme.colors.shadow))
   f.text:SetShadowOffset(1, -1)
   parent.lustFrame = f
   return f
@@ -93,9 +92,11 @@ function Lust:Update(rowFrame)
     f.icon:SetVertexColor(1, 1, 1, 1)
     f.icon:SetAlpha(1)  -- stay opaque; the red countdown text carries the "not ready" state
     f.text:SetText(formatReady(ready))
-    f.text:SetTextColor(1, 0.3, 0.3, 1)  -- red: not usable yet (sated / on CD)
+    local ln = Theme.colors.lustNotReady
+    f.text:SetTextColor(ln[1], ln[2], ln[3], ln[4])
   else
-    f.icon:SetVertexColor(0.6, 1, 0.6, 1)
+    local lr = Theme.colors.lustReady
+    f.icon:SetVertexColor(lr[1], lr[2], lr[3], lr[4])
     f.icon:SetAlpha(1)
     f.text:SetText("")
   end
@@ -110,9 +111,11 @@ function Lust:Update(rowFrame)
           rowFrame.lustFrame.icon:SetVertexColor(1, 1, 1, 1)
           rowFrame.lustFrame.icon:SetAlpha(1)
           rowFrame.lustFrame.text:SetText(formatReady(r2))
-          rowFrame.lustFrame.text:SetTextColor(1, 0.3, 0.3, 1)
+          local ln = Theme.colors.lustNotReady
+          rowFrame.lustFrame.text:SetTextColor(ln[1], ln[2], ln[3], ln[4])
         else
-          rowFrame.lustFrame.icon:SetVertexColor(0.6, 1, 0.6, 1)
+          local lr = Theme.colors.lustReady
+          rowFrame.lustFrame.icon:SetVertexColor(lr[1], lr[2], lr[3], lr[4])
           rowFrame.lustFrame.icon:SetAlpha(1)
           rowFrame.lustFrame.text:SetText("")
         end

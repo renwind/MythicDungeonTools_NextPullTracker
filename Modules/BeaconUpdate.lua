@@ -9,8 +9,10 @@ local BeaconFrame = MDT_NPT.BeaconFrame
 local BeaconMinimap = MDT_NPT.BeaconMinimap
 local Wow = MDT_NPT.Wow
 local Utils = MDT_NPT.Utils
+local Theme = MDT_NPT.Theme
 
 function Beacon:Update()
+  Theme.Refresh()
   local frame = self:GetFrame()
 
   if not db then db = MDT_NPT:GetDB() end

@@ -4,6 +4,7 @@ local pairs, ipairs, tonumber, type = pairs, ipairs, tonumber, type
 local math_max, math_min, math_huge = math.max, math.min, math.huge
 local math_cos, math_sin, math_pi = math.cos, math.sin, math.pi
 local table_sort = table.sort
+local Theme = MDT_NPT.Theme
 
 local SIZE = 208                -- viewport width/height in pixels
 local GRID_COLS = 15
@@ -188,20 +189,11 @@ local OUTLINE_THICKNESS = 2 -- pixels
 -- Fallback palette, used when no saved color exists for a state:
 -- next=green, active=orange, completed=gray, upcoming/unknown=yellow,
 -- unselected (not included anywhere in the route)=light gray.
-local DEFAULT_PULL_COLORS = {
-  ["next"] = { 0, 1, 0.5, 1 },
-  ["active"] = { 1, 0.5, 0, 1 },
-  ["completed"] = { 0.4, 0.4, 0.4, 0.6 },
-  ["upcoming"] = { 1, 1, 0, 0.7 },
-  ["unselected"] = { 0.75, 0.75, 0.75, 0.7 },
-}
+local DEFAULT_PULL_COLORS = Theme.pullColors
 
 -- Default outline (circle) colors. Only the current pull (next/active) gets an
 -- outline; defaults match the dot palette so the look is unchanged out of the box.
-local DEFAULT_OUTLINE_COLORS = {
-  ["next"] = { 0, 1, 0.5, 1 },
-  ["active"] = { 1, 0.5, 0, 1 },
-}
+local DEFAULT_OUTLINE_COLORS = Theme.pullOutlineColors
 
 ---Returns the user-configured (or default) rgba DOT color for a pull state. Any
 ---state other than next/active/completed maps to the "upcoming" entry.

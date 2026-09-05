@@ -5,6 +5,7 @@ describe("BeaconMinimap.lua", function()
 
   before_each(function()
     mocks.reset()
+    mocks.loadSource("Modules/Theme.lua")
     mocks.loadSource("Modules/BeaconMinimap.lua")
     Minimap = _G.MDT_NPT.BeaconMinimap
   end)
@@ -237,9 +238,10 @@ describe("BeaconMinimap.lua", function()
     it("colors the outline green for pull state 'next'", function()
       local frame = makeOutlineFrame()
       Minimap.drawCurrentPullOutline(frame, { [1] = { 1, 2, 3 } }, 1, enemies, "next")
+      local accent = _G.MDT_NPT.Theme.colors.accent
       for _, line in ipairs(frame.minimapContainer.lines) do
         if line.shown then
-          assert.same({ 0, 1, 0.5, 1 }, line.color)
+          assert.same(accent, line.color)
         end
       end
     end)
@@ -348,11 +350,12 @@ describe("BeaconMinimap.lua", function()
     it("colors dots with the default palette", function()
       local frame = makeDotFrame()
       Minimap.updateMinimapDots(frame, state, pulls, enemies, 1)
+      local accent = _G.MDT_NPT.Theme.colors.accent
       local shown = 0
       for _, dot in ipairs(frame.dots) do
         if dot.shown then
           shown = shown + 1
-          assert.same({ 0, 1, 0.5, 1 }, dot.color)
+          assert.same(accent, dot.color)
         end
       end
       assert.is_true(shown > 0)
@@ -395,7 +398,8 @@ describe("BeaconMinimap.lua", function()
       end
       assert.equals(2, #colors) -- one off-route clone plus the current route clone
       assert.same({ 0.75, 0.75, 0.75, 0.7 }, colors[1])
-      assert.same({ 0, 1, 0.5, 1 }, colors[2])
+      local accent = _G.MDT_NPT.Theme.colors.accent
+      assert.same(accent, colors[2])
     end)
 
     it("uses the configured color for monsters outside the route", function()

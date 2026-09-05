@@ -6,16 +6,53 @@ local CooldownPlan = MDT_NPT.CooldownPlan
 
 local pairs, ipairs = pairs, ipairs
 
+local Theme = MDT_NPT.Theme
+
 -- CooldownPlanRender: runtime rendering of the per-pull cooldown plan icon rows
 -- on the Beacon (current pull row + smaller next-pull preview row). Design 10/11.
 local Render = {}
 
+-- EUI-style pixel-perfect border helpers.
+local function getPixelSize(frame)
+  local scale = frame:GetEffectiveScale()
+  return 768 / (select(2, GetPhysicalScreenSize()) * scale)
+end
+
+local function createIconBorder(cell)
+  local px = getPixelSize(cell)
+  local r, g, b, a = 0, 0, 0, 1  -- pure black like EUI
+
+  cell.borderTop = cell:CreateTexture(nil, "OVERLAY", nil, 2)
+  cell.borderTop:SetColorTexture(r, g, b, a)
+  cell.borderTop:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 0)
+  cell.borderTop:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, 0)
+  cell.borderTop:SetHeight(px)
+
+  cell.borderBottom = cell:CreateTexture(nil, "OVERLAY", nil, 2)
+  cell.borderBottom:SetColorTexture(r, g, b, a)
+  cell.borderBottom:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 0, 0)
+  cell.borderBottom:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", 0, 0)
+  cell.borderBottom:SetHeight(px)
+
+  cell.borderLeft = cell:CreateTexture(nil, "OVERLAY", nil, 2)
+  cell.borderLeft:SetColorTexture(r, g, b, a)
+  cell.borderLeft:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, -px)
+  cell.borderLeft:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 0, px)
+  cell.borderLeft:SetWidth(px)
+
+  cell.borderRight = cell:CreateTexture(nil, "OVERLAY", nil, 2)
+  cell.borderRight:SetColorTexture(r, g, b, a)
+  cell.borderRight:SetPoint("TOPRIGHT", cell, "TOPRIGHT", 0, -px)
+  cell.borderRight:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", 0, px)
+  cell.borderRight:SetWidth(px)
+end
+
 -- Color semantics (design 11.2): {r,g,b,a} border colors.
-local COLOR_USE      = { 0, 1, 0.4, 1 }     -- use: green
-local COLOR_SAVE     = { 0.7, 0.2, 0.2, 1 } -- save: red-grey
-local COLOR_CONFLICT = { 1, 0.6, 0, 1 }     -- marked use but still on CD: warning
-local COLOR_MISMATCH = { 1, 0.8, 0, 1 }     -- pull fingerprint mismatch
-local COLOR_EMPTY    = { 0.3, 0.3, 0.3, 0.5 } -- not planned
+local COLOR_USE      = Theme.colors.cdUse
+local COLOR_SAVE     = Theme.colors.cdSave
+local COLOR_CONFLICT = Theme.colors.cdConflict
+local COLOR_MISMATCH = Theme.colors.cdMismatch
+local COLOR_EMPTY    = Theme.colors.cdEmpty
 
 local ICON_SIZE = 24
 local NEXT_ICON_SIZE = 16
@@ -65,20 +102,22 @@ local function ensureCells(row, count, size)
     if not cell then
       cell = CreateFrame("Frame", nil, row)
       cell:SetSize(size, size)
+      cell.bg = cell:CreateTexture(nil, "BACKGROUND")
+      cell.bg:SetAllPoints(cell)
+      cell.bg:SetColorTexture(0.06, 0.06, 0.06, 0.9)
       cell.icon = cell:CreateTexture(nil, "ARTWORK")
       cell.icon:SetAllPoints(cell)
-      cell.border = cell:CreateTexture(nil, "OVERLAY")
-      cell.border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
-      cell.border:SetAllPoints(cell)
+      cell.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
+      createIconBorder(cell)
       cell.cd = CreateFrame("Cooldown", nil, cell, "CooldownFrameTemplate")
       cell.cd:SetAllPoints(cell)
-      cell.label = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+      cell.label = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
       cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -1)  -- below the icon so it never covers it
       -- bold-ish + outline for readability over icons; the small next-pull row uses 2/3 size
       local lf, ls, _ = cell.label:GetFont()
       local labelSize = (size <= NEXT_ICON_SIZE) and math.floor((ls + 1) * 2 / 3 + 0.5) or (ls + 1)
       if lf then cell.label:SetFont(lf, labelSize, "OUTLINE") end
-      cell.label:SetShadowColor(0, 0, 0, 1)
+      cell.label:SetShadowColor(unpack(Theme.colors.shadow))
       cell.label:SetShadowOffset(1, -1)
       row.cells[i] = cell
     end
@@ -130,8 +169,7 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
     local cell = row.cells[i]
     local _, icon, cdID = resolveEntry(entry, dbChar)
     cell.icon:SetTexture(icon or "Interface\\ICONS\\INV_Misc_QuestionMark")
-    -- State shown via icon vertex tint (no overlay frame; removes stray grey frames).
-    cell.border:Hide()
+    cell.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
     local stateColor
     if mismatch then
       stateColor = COLOR_MISMATCH

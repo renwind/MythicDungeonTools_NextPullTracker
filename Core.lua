@@ -6,6 +6,13 @@ local Scenario = MDT_NPT.Scenario
 local Beacon = MDT_NPT.Beacon
 local Mdt = MDT_NPT.Mdt
 local Wow = MDT_NPT.Wow
+local Theme = MDT_NPT.Theme
+
+local function copyPalette(src)
+  local t = {}
+  for k, v in pairs(src) do t[k] = { v[1], v[2], v[3], v[4] } end
+  return t
+end
 
 local db, dbChar
 local pollTimer
@@ -38,20 +45,11 @@ local defaultSavedVars = {
       showCooldownPlan = false,
       -- Per-state colors for the minimap pull DOTS. {r, g, b, a}. Keys match
       -- BeaconMinimap's pull states.
-      pullColors = {
-        ["next"] = { 0, 1, 0.5, 1 },
-        ["active"] = { 1, 0.5, 0, 1 },
-        ["completed"] = { 0.4, 0.4, 0.4, 0.6 },
-        ["upcoming"] = { 1, 1, 0, 0.7 },
-        ["unselected"] = { 0.75, 0.75, 0.75, 0.7 },
-      },
+      pullColors = copyPalette(Theme.pullColors),
       -- Color of the OUTLINE (circle) drawn around the current pull, kept
       -- separate from the dot colors. Only the current pull (next/active) has
       -- an outline. Defaults match the dot colors so the look is unchanged.
-      pullOutlineColors = {
-        ["next"] = { 0, 1, 0.5, 1 },
-        ["active"] = { 1, 0.5, 0, 1 },
-      },
+      pullOutlineColors = copyPalette(Theme.pullOutlineColors),
     },
     sync = {
       authority = "auto",

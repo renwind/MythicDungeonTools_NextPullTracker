@@ -2,6 +2,7 @@ local MDT_NPT = MDT_NPT
 
 local CooldownData = MDT_NPT.CooldownData
 local CooldownPlan = MDT_NPT.CooldownPlan
+local Theme = MDT_NPT.Theme
 
 -- CooldownPlanEditor: standalone edit panel (wave list + per-wave use/save cells).
 -- Opened via /npt plan and Beacon right-click. Design 7.
@@ -32,7 +33,7 @@ function MDTNPTCooldownPlanMixin:OnLoad()
   self.cellArea = CreateFrame("Frame", nil, self)
   self.cellArea:SetPoint("TOPLEFT", self.waveList, "TOPRIGHT", 20, 0)
   self.cellArea:SetSize(240, 60)
-  self.potionHint = self:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  self.potionHint = self:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
   self.potionHint:SetPoint("TOP", self.cellArea, "BOTTOM", 0, -8)
   self.potionHint:SetText(MDT_NPT.L and MDT_NPT.L["Drag Potion Here"] or "Drag Potion Here")
   self.potionHint:Hide()
@@ -108,7 +109,7 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
       cell:SetSize(CELL_SIZE, CELL_SIZE)
       cell.icon = cell:CreateTexture(nil, "ARTWORK")
       cell.icon:SetAllPoints(cell)
-      cell.label = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+      cell.label = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
       cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -2)
       cell:SetScript("OnClick", function(c, button)
         self:OnCellClick(c, button)
