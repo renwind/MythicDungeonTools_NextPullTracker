@@ -107,6 +107,12 @@ function MDT_NPT:UpdateAll()
   if Beacon.Update then
     Beacon:Update()
   end
+  -- Keep the standalone plan editor in sync during active tracking (e.g. next
+  -- pull advances). Route switches while idle are handled by the editor's own
+  -- OnUpdate poll, since UpdateAll only fires during the 1s tracking timer.
+  if MDT_NPT.CooldownPlanEditor and MDT_NPT.CooldownPlanEditor.Refresh then
+    MDT_NPT.CooldownPlanEditor:Refresh()
+  end
 end
 
 -- =====================================================================

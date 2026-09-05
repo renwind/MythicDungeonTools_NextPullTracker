@@ -11,6 +11,24 @@ MDTNPTCooldownPlanMixin = {}
 local PANEL_W, PANEL_H = 420, 340
 local CELL_SIZE = 28
 
+-- How often (seconds) the shown editor polls MDT for a route change.
+local ROUTE_CHECK_INTERVAL = 0.5
+
+-- Read the identity of MDT's current route/preset. Returns the tuple the editor
+-- compares to decide whether a reload is needed: the route uid, the number of
+-- pulls, and the dungeon index. Kept in one place so ReloadPlans and the
+-- OnUpdate route-change check stay in lockstep.
+local function readRouteIdentity()
+  local preset = MDT_NPT.MDT and MDT_NPT.MDT.GetCurrentPreset and MDT_NPT.MDT:GetCurrentPreset() or nil
+  local uid = preset and preset.uid or nil
+  uid = (uid and uid ~= "") and uid or nil
+  local pulls = preset and preset.value and preset.value.pulls
+  local pullCount = pulls and #pulls or 0
+  local dungeonIndex = (preset and preset.value and preset.value.currentDungeonIdx)
+    or (MDT_NPT.MDT and MDT_NPT.MDT.GetDB and MDT_NPT.MDT:GetDB().currentDungeonIdx) or nil
+  return uid, pullCount, dungeonIndex
+end
+
 function MDTNPTCooldownPlanMixin:OnLoad()
   self.planEntries = {}
   self.selectedPull = 1
@@ -48,22 +66,37 @@ end
 
 function MDTNPTCooldownPlanMixin:OnShow()
   self:ReloadPlans()
+  -- OnShow only fires on hidden->visible. While the editor stays open the user
+  -- can switch MDT routes (or edit pulls), so poll for route changes and reload
+  -- when the current route identity no longer matches (design 7.2).
+  self.routeCheckElapsed = 0
+  self:SetScript("OnUpdate", function(frame, dt)
+    frame.routeCheckElapsed = (frame.routeCheckElapsed or 0) + (dt or 0)
+    if frame.routeCheckElapsed < ROUTE_CHECK_INTERVAL then return end
+    frame.routeCheckElapsed = 0
+    frame:CheckRouteChanged()
+  end)
 end
 
 -- Re-read current route's plans, rebuild wave list + cells (design 7.2 OnShow reload).
 function MDTNPTCooldownPlanMixin:ReloadPlans()
   -- Resolve uid/pullCount from the MDT current preset (works in town, not only while tracking).
-  local preset = MDT_NPT.MDT and MDT_NPT.MDT.GetCurrentPreset and MDT_NPT.MDT:GetCurrentPreset() or nil
-  local uid = preset and preset.uid or nil
-  self.uid = (uid and uid ~= "") and uid or nil
-  local pulls = preset and preset.value and preset.value.pulls
-  self.pullCount = pulls and #pulls or 0
-  self.dungeonIndex = (preset and preset.value and preset.value.currentDungeonIdx)
-    or (MDT_NPT.MDT and MDT_NPT.MDT.GetDB and MDT_NPT.MDT:GetDB().currentDungeonIdx) or nil
+  self.uid, self.pullCount, self.dungeonIndex = readRouteIdentity()
   -- default-select the tracking current next pull so the editor matches the beacon current row
   self.selectedPull = (MDT_NPT.state and MDT_NPT.state.currentNextPull) or self.selectedPull or 1
   self:RebuildWaveList()
   self:RebuildCells()
+end
+
+-- Reload only when MDT's route identity (uid, pull count, or dungeon) differs
+-- from what the editor last rendered. Returns true when a reload happened.
+function MDTNPTCooldownPlanMixin:CheckRouteChanged()
+  local uid, pullCount, dungeonIndex = readRouteIdentity()
+  if uid ~= self.uid or pullCount ~= self.pullCount or dungeonIndex ~= self.dungeonIndex then
+    self:ReloadPlans()
+    return true
+  end
+  return false
 end
 
 function MDTNPTCooldownPlanMixin:RebuildWaveList()
@@ -172,6 +205,8 @@ function MDTNPTCooldownPlanMixin:OnCellClick(cell, button)
 end
 
 function MDTNPTCooldownPlanMixin:OnHide()
+  -- Stop the route-change poll while hidden; OnShow re-arms it.
+  self:SetScript("OnUpdate", nil)
   if MDT_NPT.Beacon and MDT_NPT.Beacon.Update then MDT_NPT.Beacon:Update() end
 end
 
@@ -188,6 +223,15 @@ function CooldownPlanEditor:Open()
 end
 function CooldownPlanEditor:Close()
   if editorFrame then editorFrame:Hide() end
+end
+
+-- Public refresh hook (used by Core:UpdateAll and external callers). editorFrame
+-- is a file-local, so this method is the only supported way to force a reload of
+-- the open editor from outside this module.
+function CooldownPlanEditor:Refresh()
+  if editorFrame and editorFrame:IsShown() then
+    editorFrame:ReloadPlans()
+  end
 end
 
 MDT_NPT.CooldownPlanEditor = CooldownPlanEditor
