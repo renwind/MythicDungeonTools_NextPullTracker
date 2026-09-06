@@ -918,7 +918,11 @@ local function renderEnemiesPortraits(frame, pull, enemies)
   local enemyIndices = {}
   if pull and enemies then
     for enemyIndex in pairs(pull) do
-      if tonumber(enemyIndex) and enemies[enemyIndex] and #enemyIndices < PORTRAIT_MAX then
+      -- skip ghost entries: route editing leaves enemy keys with empty clone
+      -- lists behind, and they would otherwise occupy portrait slots
+      local clones = tonumber(enemyIndex) and enemies[enemyIndex] and pull[enemyIndex]
+      local hasClones = (type(clones) == "table" and #clones > 0) or type(clones) == "number"
+      if hasClones then
         enemyIndices[#enemyIndices + 1] = enemyIndex
       end
     end
@@ -967,6 +971,12 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     if sa ~= sb then return sa > sb end
     return (hpByKey[a] or 0) > (hpByKey[b] or 0)
   end)
+
+  -- cap AFTER the priority sort: with >8 mob types the hash order of pairs()
+  -- must not decide who gets a slot
+  for i = PORTRAIT_MAX + 1, #enemyIndices do
+    enemyIndices[i] = nil
+  end
 
   local count = #enemyIndices
   -- The portrait area always reserves the 2x4 grid height, so the cooldown rows sit
