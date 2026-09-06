@@ -10,6 +10,7 @@ local BeaconMinimap = MDT_NPT.BeaconMinimap
 local Wow = MDT_NPT.Wow
 local Utils = MDT_NPT.Utils
 local Theme = MDT_NPT.Theme
+local PullState = MDT_NPT.PullState
 
 function Beacon:Update()
   Theme.Refresh()
@@ -76,6 +77,17 @@ function Beacon:Update()
   end
 
   if currentPercentage == nil then currentPercentage = bestPercentage end
+  if currentPercentage == nil then
+    -- No live scenario criteria at all (town / between dungeons): accumulate the
+    -- forces of completed pulls so Mark Complete still advances bar and info text
+    local doneForces = 0
+    for _, ps in ipairs(state.pullStates) do
+      if ps.state == PullState.COMPLETED then
+        doneForces = doneForces + (ps.totalForces or 0)
+      end
+    end
+    currentPercentage = (doneForces / totalForcesMax) * 100
+  end
 
   local pullState = state.pullStates[nextPull]
 

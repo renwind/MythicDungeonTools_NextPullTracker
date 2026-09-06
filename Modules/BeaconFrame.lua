@@ -77,7 +77,8 @@ local function staticMobType(enemy)
   return "other"
 end
 
-local FRAME_BASE_W, FRAME_BASE_H = 418, 234  -- wider minimap viewport (208) + 184 info panel;
+local FRAME_BASE_W, FRAME_BASE_H = 418, 216  -- wider minimap viewport (208) + 188 info panel;
+  -- height = minimap 208 + 4px margins so the map fills the left column exactly
                                              -- height reserves the 2x4 portrait grid plus
                                              -- plan rows whose 开/留 labels sit below icons
 local SCALE_MIN, SCALE_MAX = 0.5, 2.0
@@ -231,11 +232,26 @@ local function create()
   local anchor = MDT_NPT:GetBeaconState()
   beaconFrame:SetPoint(anchor.anchorFrom, UIParent, anchor.anchorTo, anchor.xoffset, anchor.yoffset)
   beaconFrame:SetScale(anchor.scale)
+  -- revert of the half-opacity experiment: frame alpha stays full (content must
+  -- not fade); the panel translucency lives on the background texture instead
+  if db and db.beacon and db.beacon.alphaHalfApplied then
+    db.beacon.alpha = 1.0
+    db.beacon.alphaHalfApplied = nil
+  end
   beaconFrame:SetAlpha((db and db.beacon and db.beacon.alpha) or 1.0)
 
   local background = beaconFrame:CreateTexture(nil, "BACKGROUND")
   background:SetAllPoints()
-  background:SetColorTexture(unpack(MDT.BackdropColor or Theme.colors.panelBg))
+  -- EUI's default-theme blue-green panel art when EUI is present; flat colour else.
+  -- Half-alpha background = translucent panel while map/text/icons stay crisp.
+  beaconFrame.usesEuiBg = C_AddOns.IsAddOnLoaded("EllesmereUI")
+  if beaconFrame.usesEuiBg then
+    background:SetTexture("Interface\\AddOns\\EllesmereUI\\backgrounds\\eui-bg-all-compressed.png")
+    background:SetTexCoord(0, 1, 0, 1)
+  else
+    background:SetColorTexture(unpack(MDT.BackdropColor or Theme.colors.panelBg))
+  end
+  background:SetAlpha(0.75)  -- translucent panel; content stays fully opaque
   beaconFrame._bgTexture = background
 
   -- Frame border: 4×1px edges via Theme helper.
@@ -246,8 +262,17 @@ local function create()
   --- changes propagate without a /reload.
   function beaconFrame:RefreshChrome()
     local bgC = Theme.colors.panelBg
-    if self._bgTexture then
+    if self._bgTexture and not self.usesEuiBg then
       self._bgTexture:SetColorTexture(bgC[1], bgC[2], bgC[3], bgC[4])
+    end
+    if self.cdBandBg then
+      local bandC = Theme.colors.accent
+      self.cdBandBg:SetColorTexture(bandC[1], bandC[2], bandC[3], 0.28)
+    end
+    Theme.UpdateBorder(self.cdBandBorder)
+    if self.mapBorder then
+      local mc = Theme.colors.accent
+      for _, t in ipairs(self.mapBorder) do t:SetColorTexture(mc[1], mc[2], mc[3], 1) end
     end
     Theme.UpdateBorder(self._borderTextures)
   end
@@ -263,7 +288,7 @@ local function create()
   -- Viewport (fixed size, clips the scrollable container so only a SIZE x SIZE window is visible)
   beaconFrame.minimapFrame = CreateFrame("Frame", nil, beaconFrame)
   beaconFrame.minimapFrame:SetSize(Minimap.SIZE, Minimap.SIZE)
-  beaconFrame.minimapFrame:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", 8, -8)
+  beaconFrame.minimapFrame:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", 4, -4)
   beaconFrame.minimapFrame:SetClipsChildren(true)
   beaconFrame.minimapFrame:EnableMouseWheel(true)
   beaconFrame.minimapFrame:SetScript("OnMouseWheel", function(_, delta)
@@ -312,7 +337,30 @@ local function create()
   -- We'll just use a thin colored overlay that wraps - actually let's just do a thin border
   minimapBorder:Hide()
 
-  Theme.CreateBorder(beaconFrame.minimapFrame)
+  -- (the old white Theme.CreateBorder edge was removed: stacked with the
+  -- accent border below it read as a 2px rim)
+
+  -- EUI minimap-style border: thin 1px solid strip in the EUI theme teal
+  -- (accent); same construction as EUI's square minimap border, just slimmer
+  local bs = 1
+  local mapBorder = {}
+  do
+    local mf = beaconFrame.minimapFrame
+    local mc = Theme.colors.accent
+    local function edge(p1, p2, horiz, o1x, o1y, o2x, o2y)
+      local t = beaconFrame:CreateTexture(nil, "OVERLAY", nil, 5)
+      t:SetColorTexture(mc[1], mc[2], mc[3], 1)
+      t:SetPoint(p1, mf, p1, o1x, o1y)
+      t:SetPoint(p2, mf, p2, o2x, o2y)
+      if horiz then t:SetHeight(bs) else t:SetWidth(bs) end
+      mapBorder[#mapBorder + 1] = t
+    end
+    edge("TOPLEFT", "TOPRIGHT", true, -bs, bs, bs, bs)
+    edge("BOTTOMLEFT", "BOTTOMRIGHT", true, -bs, -bs, bs, -bs)
+    edge("TOPLEFT", "BOTTOMLEFT", false, -bs, 0, -bs, 0)
+    edge("TOPRIGHT", "BOTTOMRIGHT", false, bs, 0, bs, 0)
+  end
+  beaconFrame.mapBorder = mapBorder
 
   -- Zoom buttons (bottom-right corner of minimap)
   local function createZoomButton(label, offsetY, delta)
@@ -332,7 +380,7 @@ local function create()
   createZoomButton("-", 2, -1)
 
   -- === Information panel (right side of the beacon) ===
-  local infoPanelX = Minimap.SIZE + 16
+  local infoPanelX = Minimap.SIZE + 12
   local infoPanelWidth = FRAME_BASE_W - infoPanelX - 10
 
   -- Pull number badge
@@ -341,9 +389,10 @@ local function create()
   infoPanelPullBadge:SetTextColor(unpack(Theme.colors.accent))
   beaconFrame.pullBadge = infoPanelPullBadge
 
-  -- Status text (NEXT / IN COMBAT / ROUTE COMPLETE...)
+  -- Status text (NEXT / IN COMBAT / ROUTE COMPLETE...): top-flush with the badge
+  -- top edge; right edge clears the 4-button control row
   local infoPanelStatusText = beaconFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
-  infoPanelStatusText:SetPoint("TOPRIGHT", beaconFrame, "TOPRIGHT", -10, -10)
+  infoPanelStatusText:SetPoint("TOPRIGHT", beaconFrame, "TOPRIGHT", -72, -10)  -- clear of the 4-button control row
   infoPanelStatusText:SetTextColor(unpack(Theme.colors.textSecondary))
   beaconFrame.statusText = infoPanelStatusText
 
@@ -414,10 +463,10 @@ local function create()
     beaconFrame.portraitHovers[i] = hover
   end
 
-  -- Progress bar (for active pull)
+  -- Progress bar (for active pull): sits between the info text and the portraits
   local progressBar = CreateFrame("StatusBar", nil, beaconFrame)
   progressBar:SetSize(infoPanelWidth, 8)
-  progressBar:SetPoint("BOTTOMLEFT", beaconFrame, "BOTTOMLEFT", infoPanelX, 8)
+  progressBar:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", infoPanelX, -44)
   progressBar:SetStatusBarTexture(Theme.textures.statusBar)
   progressBar:SetStatusBarColor(unpack(Theme.colors.accentBar))
   progressBar:SetMinMaxValues(0, 1)
@@ -436,24 +485,67 @@ local function create()
   progressBarBackground:SetAllPoints()
   progressBarBackground:SetColorTexture(unpack(Theme.colors.progressBg))
 
-  -- Upcoming preview (next+1 pull)
+  -- Upcoming preview (next+1 pull): reserved slot under the bar (hidden while the
+  -- cooldown-plan rows are on, so the slot reads as plain spacing then)
   local upcomingText = beaconFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
-  upcomingText:SetPoint("BOTTOMLEFT", progressBar, "TOPLEFT", 0, 4)
+  upcomingText:SetPoint("TOPLEFT", progressBar, "BOTTOMLEFT", 0, -2)
   upcomingText:SetTextColor(unpack(Theme.colors.textMuted))
   upcomingText:SetScale(0.85)
   beaconFrame.upcomingText = upcomingText
 
   -- Cooldown plan icon rows (design 10.1/16.2): current-pull row (24px) + next-pull
-  -- preview row (16px). Fixed y (-144, matches COOLDOWN_ROW_Y) so the portrait area
+  -- preview row (16px). Fixed y (-152, matches COOLDOWN_ROW_Y) so the portrait area
   -- never jitters; the extra -16 gap leaves room for the 开/留 labels under the icons.
   local cooldownIconsRow = CreateFrame("Frame", nil, beaconFrame)
-  cooldownIconsRow:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", infoPanelX, -144)
+  cooldownIconsRow:SetPoint("TOPLEFT", beaconFrame, "TOPLEFT", infoPanelX, -152)
   cooldownIconsRow:SetSize(infoPanelWidth, 24)
   beaconFrame.cooldownIconsRow = cooldownIconsRow
   local upcomingIconsRow = CreateFrame("Frame", nil, beaconFrame)
-  upcomingIconsRow:SetPoint("TOPLEFT", cooldownIconsRow, "BOTTOMLEFT", 0, -16)
+  upcomingIconsRow:SetPoint("TOPLEFT", cooldownIconsRow, "BOTTOMLEFT", 0, -12)  -- tightened under the CD text band
   upcomingIconsRow:SetSize(infoPanelWidth, 16)
   beaconFrame.upcomingIconsRow = upcomingIconsRow
+
+  -- Light-blue band behind the cooldown plan cluster (both icon rows); padded
+  -- 4px past the outer icon edges so it reads as a panel, not a tight crop
+  local cdBandBg = beaconFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+  cdBandBg:SetPoint("TOPLEFT", cooldownIconsRow, "TOPLEFT", -4, 4)
+  -- bottom flush with the map's bottom edge (-212): next-row bottom -204 minus 8
+  cdBandBg:SetPoint("BOTTOMRIGHT", upcomingIconsRow, "BOTTOMRIGHT", 4, -8)
+  local bandC = Theme.colors.accent  -- EUI theme teal, bridged live
+  cdBandBg:SetColorTexture(bandC[1], bandC[2], bandC[3], 0.28)
+  beaconFrame.cdBandBg = cdBandBg
+
+  -- Same white 1px border as the beacon window (Theme.panelBorder, BORDER
+  -- stratum), keyed like Theme.CreateBorder's return so UpdateBorder works;
+  -- parented to the beacon, anchored inside the band's edges
+  do
+    local c = Theme.colors.panelBorder
+    local edges = {}
+    local function mk(key, p1, p2, horiz)
+      local t = beaconFrame:CreateTexture(nil, "BORDER")
+      t:SetColorTexture(c[1], c[2], c[3], c[4])
+      t:SetPoint(p1, cdBandBg, p1)
+      t:SetPoint(p2, cdBandBg, p2)
+      if horiz then t:SetHeight(1) else t:SetWidth(1) end
+      edges[key] = t
+    end
+    mk("top", "TOPLEFT", "TOPRIGHT", true)
+    mk("bottom", "BOTTOMLEFT", "BOTTOMRIGHT", true)
+    mk("left", "TOPLEFT", "BOTTOMLEFT", false)
+    mk("right", "TOPRIGHT", "BOTTOMRIGHT", false)
+    beaconFrame.cdBandBorder = edges
+  end
+
+  ---Shows/hides the plan-cluster band together with its border.
+  function beaconFrame:SetCdBandShown(show)
+    if self.cdBandBg then self.cdBandBg:SetShown(show) end
+    if self.cdBandBorder then
+      for _, key in ipairs({ "top", "bottom", "left", "right" }) do
+        local t = self.cdBandBorder[key]
+        if t then t:SetShown(show) end
+      end
+    end
+  end
 
   -- === Beacon Actions ===
   beaconFrame:SetScript("OnDragStart", function(self)
@@ -525,11 +617,24 @@ local function create()
   end)
 
   -- Manual pull buttons
-  local function createControlButton(parent, texture, offsetX, tooltip, onClick)
+  local function createControlButton(parent, texture, offsetX, tooltip, onClick, aspect, glyphSize)
     local btn = CreateFrame("Button", nil, parent)
-    btn:SetSize(16, 16)
-    btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", offsetX, -4)
-    btn:SetNormalTexture(texture)
+    btn:SetSize(14, 14)
+    btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", offsetX, -10)  -- top-flush with the badge top edge
+    btn._offsetX = offsetX  -- remembered for the runtime header alignment pass
+    -- a Button auto-fits its normal texture to the button rect, so the glyph is
+    -- a plain child texture (smaller than the hit area; ratio kept for tall art)
+    local nt = btn:CreateTexture(nil, "ARTWORK")
+    nt:SetTexture(texture)
+    local gw, gh = glyphSize or 12, glyphSize or 12
+    if aspect and aspect < 1 then
+      gw = math.floor(gw * aspect + 0.5)
+    elseif aspect and aspect > 1 then
+      gh = math.floor(gh / aspect + 0.5)
+    end
+    nt:SetSize(gw, gh)
+    nt:SetPoint("TOP", btn, "TOP", 0, -1)  -- glyph tops flush with the badge cap line
+    btn._glyphH = gh  -- runtime header alignment centers glyphs of differing sizes
     btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
     btn:SetAlpha(0)
     btn:SetScript("OnClick", onClick)
@@ -548,7 +653,7 @@ local function create()
 
   beaconFrame.completeBtn = createControlButton(
     beaconFrame,
-    "Interface\\RAIDFRAME\\ReadyCheck-Ready",
+    "Interface\\AddOns\\EllesmereUIDamageMeters\\Media\\dm_home_enemytaken.png",
     -4,
     L["Mark Complete"],
     function()
@@ -561,13 +666,14 @@ local function create()
           end
         end
       end
-    end
+    end,
+    nil, 15  -- reticle is the primary action; stroke art scales clean
   )
 
   beaconFrame.skipBtn = createControlButton(
     beaconFrame,
-    "Interface\\MINIMAP\\MiniMap-VignetteArrow",
-    -22,
+    "Interface\\AddOns\\EllesmereUI\\media\\icons\\eui-arrow-right.png",
+    -19,
     L["Skip Pull"],
     function()
       local state = MDT_NPT.state
@@ -582,8 +688,8 @@ local function create()
 
   beaconFrame.revertBtn = createControlButton(
     beaconFrame,
-    "Interface\\BUTTONS\\UI-RefreshButton",
-    -40,
+    "Interface\\AddOns\\EllesmereUI\\media\\icons\\eui-arrow-left.png",
+    -34,
     L["Revert Pull"],
     function()
       local state = MDT_NPT.state
@@ -596,12 +702,26 @@ local function create()
     end
   )
 
+  beaconFrame.planBtn = createControlButton(
+    beaconFrame,
+    "Interface\\AddOns\\EllesmereUI\\media\\icons\\cogs-3.png",
+    -49,
+    L["Toggle Plan Editor"] or "NPT Plan",
+    function()
+      local E = MDT_NPT.CooldownPlanEditor
+      if not E then return end
+      local f = _G.MDTNPTCooldownPlanEditorFrame
+      if f and f:IsShown() then E:Close() else E:Open() end
+    end
+  )
+
   beaconFrame.resizeGrip = createResizeGrip(beaconFrame)
 
   beaconFrame:SetScript("OnEnter", function(self)
     self.completeBtn:SetAlpha(0.7)
     self.skipBtn:SetAlpha(0.7)
     self.revertBtn:SetAlpha(0.7)
+    self.planBtn:SetAlpha(0.7)
     self.resizeGrip:SetAlpha(0.7)
   end)
 
@@ -610,6 +730,7 @@ local function create()
       self.completeBtn:SetAlpha(0)
       self.skipBtn:SetAlpha(0)
       self.revertBtn:SetAlpha(0)
+      self.planBtn:SetAlpha(0)
       self.resizeGrip:SetAlpha(0)
     end
   end)
@@ -657,6 +778,25 @@ local function renderPullHeader(frame, nextPull, pullState, totalPulls)
     local sn = Theme.colors.accent
     frame.statusText:SetTextColor(sn[1], sn[2], sn[3], sn[4])
   end
+
+  -- Optical vertical alignment: font line-box metrics differ per size, so fixed
+  -- anchor offsets never line up across the 14px badge / 10px status / 12px
+  -- glyphs. Center status text and button glyphs on the badge's rendered box
+  -- (heights are valid one frame after text set; Beacon:Update re-converges).
+  local bh = (frame.pullBadge and frame.pullBadge.GetHeight) and frame.pullBadge:GetHeight() or 0
+  if bh and bh > 0 then
+    local center = -10 - bh / 2
+    local sh = (frame.statusText and frame.statusText.GetHeight) and frame.statusText:GetHeight() or 0
+    frame.statusText:ClearAllPoints()
+    frame.statusText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -72, center + sh / 2)
+    for _, b in ipairs({ frame.planBtn, frame.revertBtn, frame.skipBtn, frame.completeBtn }) do
+      if b and b._offsetX then
+        b:ClearAllPoints()
+        -- glyph is top-anchored 1px under the button top: center = top -1 -glyphH/2
+        b:SetPoint("TOPRIGHT", frame, "TOPRIGHT", b._offsetX, center + 1 + (b._glyphH or 12) / 2)
+      end
+    end
+  end
 end
 
 local function renderPercentageInfoText(frame, totalCount, basePercentageForText, pullPercentage, targetPercentage)
@@ -698,19 +838,19 @@ local function renderCurrentPullContribution(frame, basePercentage, pullPercenta
 end
 
 local PORTRAIT_MAX = 8
-local PORTRAIT_TOP_Y = -56
+local PORTRAIT_TOP_Y = -66
 local PORTRAIT_PER_ROW = 4
 local PORTRAIT_ROW_GAP = 4
 local PORTRAIT_LABEL_H = 12        -- vertical band reserved for the short-name label under each portrait
 local PORTRAIT_LABEL_MAX_CHARS = 5 -- CJK chars that fit a portrait column at the 6px label font
-local COOLDOWN_ROW_Y = -144        -- cooldown icon row top: below the always-reserved 2x4 portrait grid + labels
+local COOLDOWN_ROW_Y = -152        -- cooldown icon row top: below the always-reserved 2x4 portrait grid + labels
 
 ---Frame height is constant (the portrait area always reserves the 2x4 grid), except
 ---in map-only mode where the info panel is hidden entirely.
 local function syncFrameHeight(frame)
   local db = MDT_NPT:GetDB()
   local mapOnly = (db and db.beacon and db.beacon.mapOnly) or false
-  local MAP_ONLY_H = Minimap.SIZE + 16
+  local MAP_ONLY_H = Minimap.SIZE + 8
   frame:SetHeight(mapOnly and MAP_ONLY_H or FRAME_BASE_H)
 end
 
@@ -842,7 +982,7 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     end
     nm:ClearAllPoints()
     nm:SetPoint("TOP", frame.portraits[i], "BOTTOM", 0, 0)
-    nm:SetText(fitLabel(shortEnemyName(zh) or "", PORTRAIT_LABEL_MAX_CHARS))
+    nm:SetText(fitLabel(shortEnemyName(zh) or "", (count > PORTRAIT_PER_ROW) and 4 or PORTRAIT_LABEL_MAX_CHARS))
     -- low efficiency (<1) paints ring + name + count gray; otherwise the mob-type color
     local eff = effByKey[enemyIndices[i]]
     local mc = (eff ~= nil and eff < 1) and GRAY_COLOR or MOB_COLORS[staticMobType(enemy)] or MOB_COLORS.other
@@ -912,7 +1052,7 @@ local function renderUpcomingPreview(frame, pullStates, nextPull, showUpcoming, 
   end
 end
 
-local MAP_ONLY_W = Minimap.SIZE + 16 -- minimap plus its 8px margins on each side
+local MAP_ONLY_W = Minimap.SIZE + 8 -- minimap plus its 4px margins on each side
 
 ---Switches the beacon between the full layout (minimap + info panel) and a
 ---compact map-only layout that hides the info panel and shrinks the frame down
@@ -926,6 +1066,10 @@ local function applyLayoutMode(frame)
                             frame.cooldownIconsRow, frame.upcomingIconsRow }) do
     if widget then widget:SetShown(not mapOnly) end
   end
+
+  -- the plan-cluster band follows the rows' own visibility (set by the render
+  -- pass); map-only mode force-hides it here since the render knows nothing of it
+  if mapOnly then frame:SetCdBandShown(false) end
 
   -- upcomingText: hidden in mapOnly, OR when the cooldown-plan rows are visible
   -- (the next-pull icon row functionally replaces it; design 10.2). This is the second

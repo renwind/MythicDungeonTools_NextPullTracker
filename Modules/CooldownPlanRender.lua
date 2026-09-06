@@ -54,6 +54,10 @@ local COLOR_CONFLICT = Theme.colors.cdConflict
 local COLOR_MISMATCH = Theme.colors.cdMismatch
 local COLOR_EMPTY    = Theme.colors.cdEmpty
 
+-- Center overlay badges: green check = use, red cross = save (blizz ready-check art).
+local BADGE_USE  = "Interface\\RaidFrame\\ReadyCheck-Ready"
+local BADGE_SAVE = "Interface\\RaidFrame\\ReadyCheck-NotReady"
+
 local ICON_SIZE = 24
 local NEXT_ICON_SIZE = 16
 
@@ -111,17 +115,24 @@ local function ensureCells(row, count, size)
       createIconBorder(cell)
       cell.cd = CreateFrame("Cooldown", nil, cell, "CooldownFrameTemplate")
       cell.cd:SetAllPoints(cell)
-      cell.label = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
-      cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -1)  -- below the icon so it never covers it
-      -- bold-ish + outline for readability over icons; the small next-pull row uses 2/3 size
-      local lf, ls, _ = cell.label:GetFont()
-      local labelSize = (size <= NEXT_ICON_SIZE) and math.floor((ls + 1) * 2 / 3 + 0.5) or (ls + 1)
-      if lf then cell.label:SetFont(lf, labelSize, "OUTLINE") end
+      -- badge lives on its own frame above the Cooldown swipe (child frames outrank
+      -- parent textures, so a plain cell texture would sit under the gray swipe)
+      cell.badgeFrame = CreateFrame("Frame", nil, cell)
+      cell.badgeFrame:SetAllPoints(cell)
+      cell.badgeFrame:SetFrameLevel(cell.cd:GetFrameLevel() + 10)
+      cell.badge = cell.badgeFrame:CreateTexture(nil, "OVERLAY")
+      cell.badge:SetPoint("CENTER", cell, "CENTER", 0, 0)
+      cell.badge:SetSize(math.floor(size * 0.8), math.floor(size * 0.8))
+      cell.badge:Hide()
+      cell.label = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.cdText)
+      cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -1)  -- CD countdown under the icon
       cell.label:SetShadowColor(unpack(Theme.colors.shadow))
       cell.label:SetShadowOffset(1, -1)
+      cell.label:Hide()
       row.cells[i] = cell
     end
     cell:SetSize(size, size)
+    if cell.badge then cell.badge:SetSize(math.floor(size * 0.8), math.floor(size * 0.8)) end
   end
   -- hide extras
   for i = count + 1, #row.cells do
@@ -129,19 +140,103 @@ local function ensureCells(row, count, size)
   end
 end
 
-local function layoutRow(row, count, size, parentSize)
+local function layoutRow(row, count, size, parentSize, yOff)
   local ps = parentSize or size
   local p = ps + 14
   local inset = (ps - size) / 2  -- center smaller icons under the parent row's columns
   for i = 1, count do
     local cell = row.cells[i]
     cell:ClearAllPoints()
-    -- Right-aligned to the window: entry 1 hugs the row's right edge, later
-    -- entries stack leftwards (right-to-left: e.g. Ascendance, then Potion).
-    -- parentSize lets the smaller next-pull row share the current row's columns
-    -- with matching icon center x.
-    cell:SetPoint("TOPRIGHT", row, "TOPRIGHT", -((i - 1) * p + inset), 0)
+    -- Right-aligned: entry 1 hugs the row's right edge, later entries stack
+    -- leftwards; parentSize centers the smaller next-pull icons under the
+    -- current row's columns. yOff kept for future band offsets (0 = top-flush).
+    cell:SetPoint("TOPRIGHT", row, "TOPRIGHT", -((i - 1) * p + inset), yOff or 0)
     cell:Show()
+  end
+end
+
+local function formatCD(rem)
+  if rem <= 0 then return "" end
+  if rem >= 60 then return string.format("%d:%02d", math.floor(rem / 60), math.floor(rem % 60)) end
+  return string.format("%d", math.ceil(rem))
+end
+
+---Ready-and-planned-use highlight (current-pull row only): EUI's flipbook glow in
+---its "GCD" mode (RotationHelper_Ants_Flipbook) — the same ring its aura/buff
+---reminders show when that glow type is selected. Without EUI a self-drawn cyan
+---ring pulses via the CD ticker instead.
+local GLOW_COLOR = { 0.4, 0.9, 1 }  -- EUI reminder-ring cyan, one notch brighter
+local GLOW_ENTRY = { atlas = "RotationHelper_Ants_Flipbook", texPadding = 1.6 }
+local function startEuiGlow(wrapper, cell)
+  local G = EllesmereUI and EllesmereUI.Glows
+  if not (G and G.StartFlipBookGlow) then return false end
+  local sz = cell:GetWidth() or 24
+  local ok = pcall(G.StartFlipBookGlow, wrapper, sz, GLOW_ENTRY,
+    GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3])
+  if ok then
+    -- additive blend: at 24px the ring stroke is thin and alpha-blending reads
+    -- dimmer than EUI's 40px reminders; ADD stacks light instead of covering
+    for _, region in ipairs({ wrapper:GetRegions() }) do
+      if region.SetBlendMode then region:SetBlendMode("ADD") end
+    end
+  end
+  return ok
+end
+local function stopEuiGlow(wrapper)
+  local G = EllesmereUI and EllesmereUI.Glows
+  if G and G.StopFlipBookGlow then pcall(G.StopFlipBookGlow, wrapper) end
+end
+local function ensureGlowRing(cell)
+  if cell.glowFrame then return cell.glowFrame end
+  local gf = CreateFrame("Frame", nil, cell)
+  gf:SetFrameLevel(cell.cd:GetFrameLevel() + 4)
+  gf:SetPoint("TOPLEFT", cell, "TOPLEFT", -1, 1)
+  gf:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", 1, -1)
+  local function edge(p1, p2, horiz)
+    local t = gf:CreateTexture(nil, "OVERLAY")
+    t:SetColorTexture(GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3], 1)
+    t:SetPoint(p1, gf, p1)
+    t:SetPoint(p2, gf, p2)
+    if horiz then t:SetHeight(3) else t:SetWidth(3) end
+  end
+  edge("TOPLEFT", "TOPRIGHT", true)
+  edge("BOTTOMLEFT", "BOTTOMRIGHT", true)
+  edge("TOPLEFT", "BOTTOMLEFT", false)
+  edge("TOPRIGHT", "BOTTOMRIGHT", false)
+  cell.glowFrame = gf
+  return gf
+end
+local function setCellGlow(cell, on)
+  on = on and true or false
+  if on == cell.glowOn then return end
+  cell.glowOn = on
+  local ring = ensureGlowRing(cell)
+  if on then
+    if not cell.glowWrapper then
+      local w = CreateFrame("Frame", nil, cell)
+      w:SetAllPoints(cell)
+      w:SetFrameLevel(cell.cd:GetFrameLevel() + 5)
+      cell.glowWrapper = w
+    end
+    cell.glowHasAnts = startEuiGlow(cell.glowWrapper, cell)
+    if cell.glowHasAnts then
+      cell.glowWrapper:Show()
+      -- solid ring stays as a base under the marching ants: +1px of thickness
+      ring:SetAlpha(0.8)
+      ring:Show()
+    else
+      stopEuiGlow(cell.glowWrapper)
+      cell.glowWrapper:Hide()
+      ring:SetAlpha(0.55)
+      ring:Show()
+    end
+  else
+    ring:Hide()
+    cell.glowHasAnts = false
+    if cell.glowWrapper then
+      stopEuiGlow(cell.glowWrapper)
+      cell.glowWrapper:Hide()
+    end
   end
 end
 
@@ -151,20 +246,33 @@ local function startCDTicker(cell, getCDID)
   if cell.cdTicker then return end
   cell.cdTicker = C_Timer.NewTicker(0.1, function()
     local cdID = getCDID()
-    if not cdID then cell.cd:Clear() return end
+    if not cdID then
+      cell.cd:Clear()
+      if cell.label then cell.label:SetText("") end
+      setCellGlow(cell, cell.glowAllowed and cell.planUse)
+      return
+    end
     local info = C_Spell.GetSpellCooldown(cdID)
     if info and info.startTime and info.startTime > 0 and info.duration and info.duration > 1.5 then
       cell.cd:SetCooldown(info.startTime, info.duration)
-      cell.cd:SetHideCountdownNumbers(false)
+      cell.cd:SetHideCountdownNumbers(true)  -- numbers live under the icon now
+      if cell.label then cell.label:SetText(formatCD(info.startTime + info.duration - GetTime())) end
+      setCellGlow(cell, false)  -- still on CD: no ready glow
     else
       cell.cd:Clear()
+      if cell.label then cell.label:SetText("") end
+      setCellGlow(cell, cell.glowAllowed and cell.planUse)  -- ready: glow when this pull plans "use"
+    end
+    -- pulse the ring only when EUI ants are not marching on top of it
+    if cell.glowOn and not cell.glowHasAnts and cell.glowFrame and cell.glowFrame:IsShown() then
+      cell.glowFrame:SetAlpha(0.45 + 0.35 * math.sin(GetTime() * 6))
     end
   end)
 end
 
 local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, parentSize)
   ensureCells(row, #entries, size)
-  layoutRow(row, #entries, size, parentSize)
+  layoutRow(row, #entries, size, parentSize, 0)  -- tops flush with the lust icon top
   for i, entry in ipairs(entries) do
     local cell = row.cells[i]
     local _, icon, cdID = resolveEntry(entry, dbChar)
@@ -186,17 +294,18 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
     else
       stateColor = COLOR_SAVE
     end
-    -- icon stays natural color; state conveyed by label TEXT + label COLOR only
-    -- (tinting the icon multiplied with the spell icon's own color and read as muddy).
+    -- icon stays natural color; the decision (use/save) reads from the center badge,
+    -- timing from the countdown under the icon (tinting the icon read as muddy).
     cell.icon:SetVertexColor(1, 1, 1, 1)
     cell.icon:SetAlpha(entry.plan and 1 or 0.5)
-    if cell.label then
+    cell.planUse = not not (entry.plan and entry.plan.action == "use")
+    cell.glowAllowed = showCD and true or false  -- highlight rings the current-pull row only
+    if cell.badge then
       if entry.plan then
-        local L = MDT_NPT.L
-        cell.label:SetText(entry.plan.action == "use" and (L and L["Use"] or "开") or (L and L["Save"] or "留"))
-        cell.label:SetTextColor(stateColor[1], stateColor[2], stateColor[3], 1)
+        cell.badge:SetTexture(entry.plan.action == "use" and BADGE_USE or BADGE_SAVE)
+        cell.badge:Show()
       else
-        cell.label:SetText("")
+        cell.badge:Hide()
       end
     end
     if showCD then
@@ -205,14 +314,25 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
       if info and info.startTime and info.startTime > 0 and info.duration and info.duration > 1.5 then
         cell.cd:Show()
         cell.cd:SetCooldown(info.startTime, info.duration)
-        cell.cd:SetHideCountdownNumbers(false)
+        cell.cd:SetHideCountdownNumbers(true)
+        if cell.label then cell.label:SetText(formatCD(info.startTime + info.duration - GetTime())) end
       else
         cell.cd:Clear()
         cell.cd:Hide()
+        if cell.label then cell.label:SetText("") end
       end
+      if cell.label then
+        local lc = (mismatch and COLOR_MISMATCH) or (stateColor == COLOR_CONFLICT and COLOR_CONFLICT) or Theme.colors.textPrimary
+        cell.label:SetTextColor(lc[1], lc[2], lc[3], 1)
+        cell.label:Show()
+      end
+      local onCDNow = info and info.startTime and info.startTime > 0 and info.duration and info.duration > 1.5
+      setCellGlow(cell, cell.glowAllowed and cell.planUse and not onCDNow)
     else
       cell.cd:Clear()
       cell.cd:Hide()
+      if cell.label then cell.label:Hide() end
+      setCellGlow(cell, false)
     end
     -- tooltip (design 11.5)
     cell:EnableMouse(true)
@@ -273,13 +393,15 @@ end
 local function updateDispels(row, pull, enemies)
   if not row then return end
   local f = ensureDispelFrame(row)
+  local curse, poison = pullHasDispel(pull, enemies)
+  -- top-flush with the lust icon so the whole band shares one top line
+  local yOff = 0
   f:ClearAllPoints()
   if row.lustFrame then
-    f:SetPoint("TOPLEFT", row.lustFrame, "TOPRIGHT", 4, 0)
+    f:SetPoint("TOPLEFT", row.lustFrame, "TOPRIGHT", 4, yOff)
   else
-    f:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+    f:SetPoint("TOPLEFT", row, "TOPLEFT", 0, yOff)
   end
-  local curse, poison = pullHasDispel(pull, enemies)
   if curse then f.curse:Show() else f.curse:Hide() end
   if poison then
     f.poison:ClearAllPoints()
@@ -319,6 +441,7 @@ function Render:Render(frame, state, preset, nextPull)
     end
     if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Hide(showRow) end
     hideDispels(showRow)
+    frame:SetCdBandShown(false)
     return
   end
 
@@ -328,6 +451,7 @@ function Render:Render(frame, state, preset, nextPull)
     showRow:Hide(); nextRow:Hide()
     if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Hide(showRow) end
     hideDispels(showRow)
+    frame:SetCdBandShown(false)
     return
   end
 
@@ -339,6 +463,7 @@ function Render:Render(frame, state, preset, nextPull)
 
   local entries = CooldownData.getActiveEntries(dbChar, uid, pullIndex)
   showRow:Show()
+  frame:SetCdBandShown(true)
   fillRow(showRow, entries, dbChar, mismatch, ICON_SIZE, true)
   -- bloodlust monitor to the right of the current-pull row
   if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Update(showRow) end

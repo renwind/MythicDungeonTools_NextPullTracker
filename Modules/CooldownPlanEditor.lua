@@ -8,7 +8,8 @@ local Theme = MDT_NPT.Theme
 -- Opened via /npt plan and Beacon right-click. Design 7.
 MDTNPTCooldownPlanMixin = {}
 
-local PANEL_W, PANEL_H = 420, 340
+-- compact panel: two seed columns max; height matches the beacon frame (216)
+local PANEL_W, PANEL_H = 240, 216
 local CELL_SIZE = 28
 
 -- How often (seconds) the shown editor polls MDT for a route change.
@@ -85,8 +86,8 @@ function MDTNPTCooldownPlanMixin:OnLoad()
   -- child controls (programmatic; XML supplies only the frame + mixin)
   -- EUI-style wave list: bare ScrollFrame + wheel + slim flat scrollbar (no blizz arrows)
   self.waveList = CreateFrame("ScrollFrame", nil, self)
-  self.waveList:SetPoint("TOPLEFT", self, "TOPLEFT", 12, -40)
-  self.waveList:SetSize(110, PANEL_H - 90)
+  self.waveList:SetPoint("TOPLEFT", self, "TOPLEFT", 12, -12)
+  self.waveList:SetSize(100, PANEL_H - 60)
   self.waveList:EnableMouseWheel(true)
   self.waveList:SetScript("OnMouseWheel", function(f, delta)
     local max = f:GetVerticalScrollRange()
@@ -97,7 +98,7 @@ function MDTNPTCooldownPlanMixin:OnLoad()
     if f:GetParent().UpdateWaveThumb then f:GetParent():UpdateWaveThumb() end
   end)
   self.waveListContent = CreateFrame("Frame", nil, self.waveList)
-  self.waveListContent:SetSize(110, PANEL_H - 90)
+  self.waveListContent:SetSize(100, PANEL_H - 60)
   self.waveList:SetScrollChild(self.waveListContent)
   -- 4px flat track + thumb, colours from Theme
   self.waveTrack = self:CreateTexture(nil, "OVERLAY")
@@ -111,8 +112,8 @@ function MDTNPTCooldownPlanMixin:OnLoad()
   self.waveThumb:SetColorTexture(thC[1], thC[2], thC[3], 0.6)
   self.waveThumb:Hide()
   self.cellArea = CreateFrame("Frame", nil, self)
-  self.cellArea:SetPoint("TOPLEFT", self.waveList, "TOPRIGHT", 20, 0)
-  self.cellArea:SetSize(240, 60)
+  self.cellArea:SetPoint("TOPLEFT", self.waveList, "TOPRIGHT", 16, 0)
+  self.cellArea:SetSize(80, 60)
   self.potionHint = self:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
   self.potionHint:SetPoint("TOP", self.cellArea, "BOTTOM", 0, -8)
   self.potionHint:SetText(MDT_NPT.L and MDT_NPT.L["Drag Potion Here"] or "Drag Potion Here")
