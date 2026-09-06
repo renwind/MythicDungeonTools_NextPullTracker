@@ -20,13 +20,6 @@ local SEED_TABLE = {
       baseCD   = 180,
     },
     {
-      id       = 79206, -- Spiritwalker's Grace
-      kind     = "spell",
-      name     = "Spiritwalker's Grace",
-      icon     = nil,
-      baseCD   = 120,
-    },
-    {
       id       = nil, -- filled at runtime from dbChar.cooldownPotionID
       kind     = "item",
       name     = "Burst Potion",

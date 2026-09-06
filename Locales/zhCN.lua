@@ -14,7 +14,6 @@ L["No Valid Route"] = "当前路线无有效 ID，计划功能不可用"
 L["Drag Potion Here"] = "拖入药水"
 L["Burst Potion"] = "爆发药水"
 L["Ascendance"] = "升腾"
-L["Spiritwalker's Grace"] = "灵魂行走"
 L["Apply"] = "应用"
 L["Potion Not Specified"] = "未指定"
 -- base beacon keys (Chinese client)

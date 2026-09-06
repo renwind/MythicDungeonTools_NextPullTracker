@@ -29,36 +29,100 @@ local function readRouteIdentity()
   return uid, pullCount, dungeonIndex
 end
 
+-- EUI-style slim scrollbar geometry: thumb height/offset from the scroll range.
+function MDTNPTCooldownPlanMixin:UpdateWaveThumb()
+  if not self.waveThumb then return end
+  local view = self.waveList:GetHeight()
+  local content = self.waveListContent:GetHeight()
+  local range = self.waveList:GetVerticalScrollRange()
+  if content <= 0 or range <= 0 then
+    self.waveThumb:Hide()
+    return
+  end
+  local thumbH = math.max(24, view * (view / content))
+  local offset = -(self.waveList:GetVerticalScroll() / range) * (view - thumbH)
+  self.waveThumb:SetHeight(thumbH)
+  self.waveThumb:ClearAllPoints()
+  self.waveThumb:SetPoint("TOPLEFT", self.waveTrack, "TOPLEFT", 0, offset)
+  self.waveThumb:SetPoint("TOPRIGHT", self.waveTrack, "TOPRIGHT", 0, offset)
+  self.waveThumb:Show()
+end
+
 function MDTNPTCooldownPlanMixin:OnLoad()
   self.planEntries = {}
   self.selectedPull = 1
-  -- Backdrop set in code (XML Backdrop/AbsInset attrs are unrecognized by the 12.x parser).
-  self:SetBackdrop({
-    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-    tile = true,
-    tileSize = 32,
-    edgeSize = 32,
-    insets = { left = 11, right = 11, top = 11, bottom = 11 },
-  })
+  -- Theme panel chrome: flat bg + 1px EUI-style border (same look as the beacon)
+  self.themeBg = self:CreateTexture(nil, "BACKGROUND")
+  self.themeBg:SetAllPoints()
+  local bgC = Theme.colors.panelBg
+  self.themeBg:SetColorTexture(bgC[1], bgC[2], bgC[3], bgC[4])
+  self.themeEdges = Theme.CreateBorder(self)
+  -- draggable; once the user moves it we stop auto-snapping to the beacon
+  self:SetMovable(true)
+  self:RegisterForDrag("LeftButton")
+  self:SetScript("OnDragStart", function(f)
+    if InCombatLockdown() then return end
+    f.userMoved = true
+    f:StartMoving()
+  end)
+  self:SetScript("OnDragStop", function(f) f:StopMovingOrSizing() end)
+  Theme.RegisterRefreshCallback(function()
+    if not self.themeBg then return end
+    local bg = Theme.colors.panelBg
+    self.themeBg:SetColorTexture(bg[1], bg[2], bg[3], bg[4])
+    Theme.UpdateBorder(self.themeEdges)
+    local m = Theme.colors.textMuted
+    if self.potionHint then self.potionHint:SetTextColor(m[1], m[2], m[3], m[4]) end
+    if self.waveTrack then
+      local tr = Theme.colors.panelBorder
+      self.waveTrack:SetColorTexture(tr[1], tr[2], tr[3], tr[4])
+    end
+    if self.waveThumb then
+      local th = Theme.colors.textSecondary
+      self.waveThumb:SetColorTexture(th[1], th[2], th[3], 0.6)
+    end
+  end)
   -- child controls (programmatic; XML supplies only the frame + mixin)
-  self.waveList = CreateFrame("ScrollFrame", nil, self, "UIPanelScrollFrameTemplate")
+  -- EUI-style wave list: bare ScrollFrame + wheel + slim flat scrollbar (no blizz arrows)
+  self.waveList = CreateFrame("ScrollFrame", nil, self)
   self.waveList:SetPoint("TOPLEFT", self, "TOPLEFT", 12, -40)
   self.waveList:SetSize(110, PANEL_H - 90)
+  self.waveList:EnableMouseWheel(true)
+  self.waveList:SetScript("OnMouseWheel", function(f, delta)
+    local max = f:GetVerticalScrollRange()
+    local next = math.max(0, math.min(max, f:GetVerticalScroll() - delta * 24))
+    f:SetVerticalScroll(next)
+  end)
+  self.waveList:SetScript("OnVerticalScroll", function(f)
+    if f:GetParent().UpdateWaveThumb then f:GetParent():UpdateWaveThumb() end
+  end)
   self.waveListContent = CreateFrame("Frame", nil, self.waveList)
   self.waveListContent:SetSize(110, PANEL_H - 90)
   self.waveList:SetScrollChild(self.waveListContent)
+  -- 4px flat track + thumb, colours from Theme
+  self.waveTrack = self:CreateTexture(nil, "OVERLAY")
+  self.waveTrack:SetWidth(4)
+  self.waveTrack:SetPoint("TOPLEFT", self.waveList, "TOPRIGHT", 6, 0)
+  self.waveTrack:SetPoint("BOTTOMLEFT", self.waveList, "BOTTOMRIGHT", 6, 0)
+  local trC = Theme.colors.panelBorder
+  self.waveTrack:SetColorTexture(trC[1], trC[2], trC[3], trC[4])
+  self.waveThumb = self:CreateTexture(nil, "OVERLAY", nil, 1)
+  local thC = Theme.colors.textSecondary
+  self.waveThumb:SetColorTexture(thC[1], thC[2], thC[3], 0.6)
+  self.waveThumb:Hide()
   self.cellArea = CreateFrame("Frame", nil, self)
   self.cellArea:SetPoint("TOPLEFT", self.waveList, "TOPRIGHT", 20, 0)
   self.cellArea:SetSize(240, 60)
   self.potionHint = self:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
   self.potionHint:SetPoint("TOP", self.cellArea, "BOTTOM", 0, -8)
   self.potionHint:SetText(MDT_NPT.L and MDT_NPT.L["Drag Potion Here"] or "Drag Potion Here")
+  local hintC = Theme.colors.textMuted
+  self.potionHint:SetTextColor(hintC[1], hintC[2], hintC[3], hintC[4])
   self.potionHint:Hide()
-  self.applyButton = CreateFrame("Button", nil, self, "UIPanelButtonTemplate")
+  self.applyButton = CreateFrame("Button", nil, self)
   self.applyButton:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -12, 12)
   self.applyButton:SetSize(90, 24)
-  self.applyButton:SetText(MDT_NPT.L and MDT_NPT.L["Apply"] or "Apply")
+  Theme.StyleButton(self.applyButton, MDT_NPT.L and MDT_NPT.L["Apply"] or "Apply", Theme.fonts.small)
   self.applyButton:SetScript("OnClick", function()
     self:Hide()
   end)
@@ -108,16 +172,21 @@ function MDTNPTCooldownPlanMixin:RebuildWaveList()
   for i = 1, n do
     local btn = self.waveButtons[i]
     if not btn then
-      btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+      btn = CreateFrame("Button", nil, parent)
       btn:SetSize(90, 22)
+      btn.themeText = Theme.StyleButton(btn, "", Theme.fonts.small)
       btn:SetScript("OnClick", function(b)
         self.selectedPull = b.pullIndex
         self:RebuildCells()
+        self:RebuildWaveList()
       end)
       self.waveButtons[i] = btn
     end
     btn.pullIndex = i
-    btn:SetText("Pull " .. i)
+    btn.themeText:SetText("Pull " .. i)
+    -- selected wave reads accent, the rest secondary
+    local tc = (i == self.selectedPull) and Theme.colors.accent or Theme.colors.textSecondary
+    btn.themeText:SetTextColor(tc[1], tc[2], tc[3], tc[4])
     btn:ClearAllPoints()
     btn:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -(i - 1) * 24)
     btn:Show()
@@ -125,6 +194,11 @@ function MDTNPTCooldownPlanMixin:RebuildWaveList()
   for i = n + 1, #(self.waveButtons or {}) do
     self.waveButtons[i]:Hide()
   end
+  -- grow the scroll content with the wave count so the slim scrollbar tracks it
+  local viewH = self.waveList:GetHeight()
+  self.waveListContent:SetHeight(math.max(viewH, n * 24))
+  self.waveList:UpdateScrollChildRect()
+  self:UpdateWaveThumb()
 end
 
 function MDTNPTCooldownPlanMixin:RebuildCells()
@@ -142,6 +216,7 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
       cell:SetSize(CELL_SIZE, CELL_SIZE)
       cell.icon = cell:CreateTexture(nil, "ARTWORK")
       cell.icon:SetAllPoints(cell)
+      cell.edges = Theme.CreateBorder(cell)
       cell.label = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
       cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -2)
       cell:SetScript("OnClick", function(c, button)
@@ -169,6 +244,8 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
     end
     cell.action = action
     cell.label:SetText(action == "use" and (MDT_NPT.L["Use"] or "Use") or (action == "save" and (MDT_NPT.L["Save"] or "Save") or ""))
+    local lc = (action == "use") and Theme.colors.cdUse or ((action == "save") and Theme.colors.cdSave or Theme.colors.textMuted)
+    cell.label:SetTextColor(lc[1], lc[2], lc[3], lc[4])
     cell:ClearAllPoints()
     cell:SetPoint("TOPLEFT", self.cellArea, "TOPLEFT", (i - 1) * (CELL_SIZE + 8), 0)
     cell:Show()
@@ -218,6 +295,16 @@ function CooldownPlanEditor:Open()
   if InCombatLockdown() then return end
   if not editorFrame then
     editorFrame = CreateFrame("Frame", "MDTNPTCooldownPlanEditorFrame", UIParent, "MDTNPTCooldownPlanTemplate")
+  end
+  -- default dock: hug the beacon's right edge until the user drags the panel away
+  if not editorFrame.userMoved then
+    local beacon = _G.MDTNextPullBeaconFrame
+    editorFrame:ClearAllPoints()
+    if beacon then
+      editorFrame:SetPoint("TOPLEFT", beacon, "TOPRIGHT", 8, 0)
+    else
+      editorFrame:SetPoint("CENTER")
+    end
   end
   editorFrame:Show()
 end

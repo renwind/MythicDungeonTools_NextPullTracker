@@ -158,6 +158,63 @@ local function createResizeGrip(parent)
   return grip
 end
 
+---Selects a pull in MDT's right-side pull list. Calls the pull button widget's own
+---OnClickNormal callback with force=true (the widget ignores simulated clicks unless
+---the cursor hovers its scroll frame). True on success; needs the MDT UI initialized.
+local function trySelectMDTPull(pullIndex)
+  local top = _G.MDTTopPanel
+  local mainFrame = top and top:GetParent()
+  -- pull buttons live on the side panel (ReloadPullButtons uses main_frame.sidePanel)
+  local side = mainFrame and mainFrame.sidePanel
+  local pool = (side and side.newPullButtons) or (mainFrame and mainFrame.newPullButtons)
+  local btn = pool and pool[pullIndex]
+  if not btn then return false end
+  if btn.callbacks and btn.callbacks.OnClickNormal then
+    btn.callbacks.OnClickNormal(nil, "LeftButton", true)
+    return true
+  end
+  if btn.frame and btn.frame.Click then
+    btn.frame:Click()
+    return true
+  end
+  return false
+end
+
+---Opens ExwindTools' dungeon spell encyclopedia (EXSP) and locates the mob whose
+---npcID matches. Mirrors the addon's own /exsp slash flow (create -> show -> tab),
+---then selects the mob through its public globals. True on success.
+local function tryOpenExwindSpellInfo(npcID)
+  local EXSP = _G.EXSP
+  if not npcID or not EXSP or not EXSP.Database then return false end
+  local dName, mName
+  for d, mobs in pairs(EXSP.Database) do
+    for name, data in pairs(mobs) do
+      if type(data) == "table" and data.npcID == npcID then
+        dName, mName = d, name
+        break
+      end
+    end
+    if dName then break end
+  end
+  if not dName then return false end
+  if not EXSP.MainFrame and EXSP.CreateMainFrame then EXSP.CreateMainFrame() end
+  if not EXSP.MainFrame then return false end
+  EXSP.MainFrame:Show()
+  if not EXSP.CurrentDungeon and EXSP.Tabs and EXSP.Tabs[1] then EXSP.Tabs[1]:Click() end
+  if EXSP.CurrentDungeon ~= dName and EXSP.Tabs and EXSP.DungeonList then
+    for i, name in ipairs(EXSP.DungeonList) do
+      if name == dName and EXSP.Tabs[i] then
+        EXSP.Tabs[i]:Click()
+        break
+      end
+    end
+  end
+  EXSP.CurrentMob = mName
+  if _G.EXSP_RefreshRightPanel then _G.EXSP_RefreshRightPanel(dName, mName) end
+  if _G.EXSP_RefreshMobList then _G.EXSP_RefreshMobList(dName) end
+  return true
+end
+
 ---Builds the Beacon's UI frame and all its child widgets. Caller owns the returned frame.
 local function create()
   local db = MDT_NPT:GetDB()
@@ -330,6 +387,30 @@ local function create()
       GameTooltip:Show()
     end)
     hover:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- left-click: open MDT and select the beacon's current pull; right-click: Exwind
+    -- spell encyclopedia located on this mob. MDT 6.2 keeps its addon table private,
+    -- so both paths go through the public API plus widget-level simulation.
+    hover:SetScript("OnMouseDown", function(self, button)
+      if button == "RightButton" then
+        -- right-click: Exwind dungeon spell encyclopedia, located on this mob
+        if self.npcID then tryOpenExwindSpellInfo(self.npcID) end
+        return
+      end
+      if button ~= "LeftButton" then return end
+      -- left-click: open MDT (never toggle-close) and select the beacon's current pull
+      GameTooltip:Hide()
+      local pullIndex = MDT_NPT.state and MDT_NPT.state.currentNextPull
+      local selected = (pullIndex and trySelectMDTPull(pullIndex)) or false
+      local top = _G.MDTTopPanel
+      local mainFrame = top and top:GetParent()
+      if not (mainFrame and mainFrame:IsShown()) then
+        local api = _G.MythicDungeonToolsAPI
+        if api and api.ShowInterface then api:ShowInterface() end
+        if pullIndex and not selected then
+          C_Timer.After(0.8, function() trySelectMDTPull(pullIndex) end)
+        end
+      end
+    end)
     beaconFrame.portraitHovers[i] = hover
   end
 
@@ -646,7 +727,9 @@ end
 
 ---Anchors the i-th portrait slot for a pull with `count` visible portraits.
 ---≤4 → one row at 34x34; >4 → 2x4 grid at 28x28 so the extra mobs fit without
----pushing into the progress bar below.
+---pushing into the progress bar below. Slots fill from the RIGHT edge leftwards,
+---top→bottom within a column: rank 1 = top-right, rank 2 = bottom-right (two rows),
+---rank 3 = top of the second-to-last column, etc.
 local function layoutPortraitSlot(frame, i, count)
   local twoRow = count > PORTRAIT_PER_ROW
   local size = twoRow and 28 or 34
@@ -660,14 +743,36 @@ local function layoutPortraitSlot(frame, i, count)
   portrait:SetSize(size, size)
   outline:SetSize(size + 2, size + 2)
 
-  local row = math.floor((i - 1) / PORTRAIT_PER_ROW)
-  local col = (i - 1) % PORTRAIT_PER_ROW
+  local rows = twoRow and 2 or 1
+  local colFromRight = math.floor((i - 1) / rows)
+  local row = (i - 1) % rows
+  local col = PORTRAIT_PER_ROW - 1 - colFromRight
   local x = frame.portraitInfoPanelX + col * (size + colGap)
   local y = PORTRAIT_TOP_Y - row * (size + PORTRAIT_ROW_GAP + PORTRAIT_LABEL_H)
 
   portrait:ClearAllPoints()
   portrait:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
 end
+
+-- MDT tooltip efficiency score: 2.5 * (forces/totalForces) * 13000 / (health/20000).
+-- Returns nil when the required MDT data is unavailable (score then never grays).
+local function efficiencyScoreOf(enemy, clones)
+  local health = enemy.health
+  if not health or health <= 0 then return nil end
+  -- pull[enemyIndex] holds clone INDICES (numbers), not clone tables; resolve via enemy.clones
+  local cloneIdx = (type(clones) == "table") and clones[1]
+  local clone = (type(cloneIdx) == "number") and enemy.clones and enemy.clones[cloneIdx]
+  local forces = (clone and clone.count) or enemy.count
+  if not forces then return nil end
+  local ok, mdtDb = pcall(MDT.GetDB, MDT)
+  local idx = ok and mdtDb and mdtDb.currentDungeonIdx
+  local totals = idx and MDT.dungeonTotalCount and MDT.dungeonTotalCount[idx]
+  local totalCount = totals and totals.normal
+  if not totalCount or totalCount <= 0 then return nil end
+  return 2.5 * (forces / totalCount) * 13000 / (health / 20000)
+end
+
+local GRAY_COLOR = { 0.55, 0.55, 0.55 } -- low efficiency (score < 1): ring + texts go gray
 
 local function renderEnemiesPortraits(frame, pull, enemies)
   local enemyIndices = {}
@@ -678,6 +783,38 @@ local function renderEnemiesPortraits(frame, pull, enemies)
       end
     end
   end
+
+  -- Kill-priority order: higher level > has an interruptible spell > higher MDT
+  -- efficiency score > higher health (scaled by MDT's selected keystone difficulty).
+  local hpByKey, effByKey = {}, {}
+  for _, ei in ipairs(enemyIndices) do
+    local e = enemies[ei]
+    local hp = e.health or 0
+    if MDT.CalculateEnemyHealth and MDT.GetDB then
+      local ok, mdtDb = pcall(MDT.GetDB, MDT)
+      local diff = ok and mdtDb and mdtDb.currentDifficulty
+      if diff then
+        local ok2, v = pcall(MDT.CalculateEnemyHealth, MDT, e.isBoss or false, hp, diff, e.ignoreFortified)
+        if ok2 and type(v) == "number" then hp = v end
+      end
+    end
+    hpByKey[ei] = hp
+    effByKey[ei] = efficiencyScoreOf(e, pull[ei])
+  end
+  table.sort(enemyIndices, function(a, b)
+    local ea, eb = enemies[a], enemies[b]
+    -- low-efficiency (gray, score < 1) mobs carry no progress: always sink them last
+    local ga = effByKey[a] ~= nil and effByKey[a] < 1
+    local gb = effByKey[b] ~= nil and effByKey[b] < 1
+    if ga ~= gb then return not ga end
+    local la, lb = ea.level or 0, eb.level or 0
+    if la ~= lb then return la > lb end
+    local ia, ib = hasInterruptibleSpell(ea), hasInterruptibleSpell(eb)
+    if ia ~= ib then return ia end
+    local sa, sb = effByKey[a] or -1, effByKey[b] or -1
+    if sa ~= sb then return sa > sb end
+    return (hpByKey[a] or 0) > (hpByKey[b] or 0)
+  end)
 
   local count = #enemyIndices
   -- The portrait area always reserves the 2x4 grid height, so the cooldown rows sit
@@ -706,13 +843,38 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     nm:ClearAllPoints()
     nm:SetPoint("TOP", frame.portraits[i], "BOTTOM", 0, 0)
     nm:SetText(fitLabel(shortEnemyName(zh) or "", PORTRAIT_LABEL_MAX_CHARS))
-    local mc = MOB_COLORS[staticMobType(enemy)] or MOB_COLORS.other
+    -- low efficiency (<1) paints ring + name + count gray; otherwise the mob-type color
+    local eff = effByKey[enemyIndices[i]]
+    local mc = (eff ~= nil and eff < 1) and GRAY_COLOR or MOB_COLORS[staticMobType(enemy)] or MOB_COLORS.other
     nm:SetTextColor(mc[1], mc[2], mc[3], 1)
     -- Tint the white circle ring around the portrait with the same mob-type color.
     frame.portraitOutlines[i]:SetVertexColor(mc[1], mc[2], mc[3], 1)
     nm:Show()
+    -- clone count badge at the portrait's top-left ("x2" etc.; a single mob shows nothing)
+    local clones = pull[enemyIndices[i]]
+    local cloneCount = (type(clones) == "table" and #clones) or 1
+    local ct = frame.portraitCounts and frame.portraitCounts[i]
+    if not ct then
+      ct = frame:CreateFontString(nil, "OVERLAY", Theme.fonts.npcName)
+      ct:SetShadowColor(unpack(Theme.colors.shadow))
+      ct:SetShadowOffset(1, -1)
+      frame.portraitCounts = frame.portraitCounts or {}
+      frame.portraitCounts[i] = ct
+    end
+    ct:ClearAllPoints()
+    ct:SetPoint("TOPLEFT", frame.portraits[i], "TOPLEFT", -3, 3)
+    if cloneCount > 1 then
+      ct:SetText("x"..cloneCount)
+      ct:SetTextColor(mc[1], mc[2], mc[3], 1)  -- same mob-type color as the name label
+      ct:Show()
+    else
+      ct:Hide()
+    end
     if frame.portraitHovers and frame.portraitHovers[i] then
       frame.portraitHovers[i].mobName = rawName and (zh or rawName) or nil
+      frame.portraitHovers[i].enemyIdx = tonumber(enemyIndices[i])
+      frame.portraitHovers[i].cloneIdx = (type(clones) == "table" and clones[1]) or nil
+      frame.portraitHovers[i].npcID = enemy.id
       frame.portraitHovers[i]:Show()
     end
   end
@@ -720,8 +882,12 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     frame.portraits[i]:Hide()
     frame.portraitOutlines[i]:Hide()
     if frame.portraitNames and frame.portraitNames[i] then frame.portraitNames[i]:Hide() end
+    if frame.portraitCounts and frame.portraitCounts[i] then frame.portraitCounts[i]:Hide() end
     if frame.portraitHovers and frame.portraitHovers[i] then
       frame.portraitHovers[i].mobName = nil
+      frame.portraitHovers[i].enemyIdx = nil
+      frame.portraitHovers[i].cloneIdx = nil
+      frame.portraitHovers[i].npcID = nil
       frame.portraitHovers[i]:Hide()
     end
   end
@@ -776,6 +942,7 @@ local function applyLayoutMode(frame)
       frame.portraits[i]:Hide()
       frame.portraitOutlines[i]:Hide()
       if frame.portraitNames and frame.portraitNames[i] then frame.portraitNames[i]:Hide() end
+      if frame.portraitCounts and frame.portraitCounts[i] then frame.portraitCounts[i]:Hide() end
       if frame.portraitHovers[i] then frame.portraitHovers[i]:Hide() end
     end
   end
