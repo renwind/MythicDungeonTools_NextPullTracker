@@ -167,24 +167,53 @@ end
 ---ring pulses via the CD ticker instead.
 local GLOW_COLOR = { 0.4, 0.9, 1 }  -- EUI reminder-ring cyan, one notch brighter
 local GLOW_ENTRY = { atlas = "RotationHelper_Ants_Flipbook", texPadding = 1.6 }
-local function startEuiGlow(wrapper, cell)
+local function blendAdd(f)
+  for _, region in ipairs({ f:GetRegions() }) do
+    if region.SetBlendMode then region:SetBlendMode("ADD") end
+  end
+end
+
+local function startEuiGlow(cell)
   local G = EllesmereUI and EllesmereUI.Glows
   if not (G and G.StartFlipBookGlow) then return false end
   local sz = cell:GetWidth() or 24
-  local ok = pcall(G.StartFlipBookGlow, wrapper, sz, GLOW_ENTRY,
-    GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3])
-  if ok then
-    -- additive blend: at 24px the ring stroke is thin and alpha-blending reads
-    -- dimmer than EUI's 40px reminders; ADD stacks light instead of covering
-    for _, region in ipairs({ wrapper:GetRegions() }) do
-      if region.SetBlendMode then region:SetBlendMode("ADD") end
-    end
+  if not cell.glowWrapper then
+    local w = CreateFrame("Frame", nil, cell)
+    w:SetAllPoints(cell)
+    w:SetFrameLevel(cell.cd:GetFrameLevel() + 5)
+    cell.glowWrapper = w
   end
-  return ok
+  local ok = pcall(G.StartFlipBookGlow, cell.glowWrapper, sz, GLOW_ENTRY,
+    GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3])
+  if not ok then return false end
+  -- additive blend: at 24px the ring stroke is thin and alpha-blending reads
+  -- dimmer than EUI's 40px reminders; ADD stacks light instead of covering
+  blendAdd(cell.glowWrapper)
+  -- faux-bold: a second in-phase flipbook pass offset 1px diagonally thickens
+  -- the marching dots by ~1px without enlarging the ring diameter
+  if not cell.glowWrapperBold then
+    local w2 = CreateFrame("Frame", nil, cell)
+    w2:SetPoint("TOPLEFT", cell, "TOPLEFT", 1, -1)
+    w2:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", 1, -1)
+    w2:SetFrameLevel(cell.cd:GetFrameLevel() + 5)
+    cell.glowWrapperBold = w2
+  end
+  local ok2 = pcall(G.StartFlipBookGlow, cell.glowWrapperBold, sz, GLOW_ENTRY,
+    GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3])
+  if ok2 then
+    blendAdd(cell.glowWrapperBold)
+    cell.glowWrapperBold:Show()
+  else
+    cell.glowWrapperBold:Hide()
+  end
+  cell.glowWrapper:Show()
+  return true
 end
-local function stopEuiGlow(wrapper)
+local function stopEuiGlow(cell)
   local G = EllesmereUI and EllesmereUI.Glows
-  if G and G.StopFlipBookGlow then pcall(G.StopFlipBookGlow, wrapper) end
+  if not (G and G.StopFlipBookGlow) then return end
+  if cell.glowWrapper then pcall(G.StopFlipBookGlow, cell.glowWrapper) end
+  if cell.glowWrapperBold then pcall(G.StopFlipBookGlow, cell.glowWrapperBold) end
 end
 local function ensureGlowRing(cell)
   if cell.glowFrame then return cell.glowFrame end
@@ -197,7 +226,7 @@ local function ensureGlowRing(cell)
     t:SetColorTexture(GLOW_COLOR[1], GLOW_COLOR[2], GLOW_COLOR[3], 1)
     t:SetPoint(p1, gf, p1)
     t:SetPoint(p2, gf, p2)
-    if horiz then t:SetHeight(3) else t:SetWidth(3) end
+    if horiz then t:SetHeight(2) else t:SetWidth(2) end
   end
   edge("TOPLEFT", "TOPRIGHT", true)
   edge("BOTTOMLEFT", "BOTTOMRIGHT", true)
@@ -212,31 +241,22 @@ local function setCellGlow(cell, on)
   cell.glowOn = on
   local ring = ensureGlowRing(cell)
   if on then
-    if not cell.glowWrapper then
-      local w = CreateFrame("Frame", nil, cell)
-      w:SetAllPoints(cell)
-      w:SetFrameLevel(cell.cd:GetFrameLevel() + 5)
-      cell.glowWrapper = w
-    end
-    cell.glowHasAnts = startEuiGlow(cell.glowWrapper, cell)
+    cell.glowHasAnts = startEuiGlow(cell)
     if cell.glowHasAnts then
-      cell.glowWrapper:Show()
-      -- solid ring stays as a base under the marching ants: +1px of thickness
-      ring:SetAlpha(0.8)
-      ring:Show()
+      ring:Hide()  -- the (faux-bold) flipbook ring is self-sufficient
     else
-      stopEuiGlow(cell.glowWrapper)
-      cell.glowWrapper:Hide()
+      stopEuiGlow(cell)
+      if cell.glowWrapper then cell.glowWrapper:Hide() end
+      if cell.glowWrapperBold then cell.glowWrapperBold:Hide() end
       ring:SetAlpha(0.55)
       ring:Show()
     end
   else
     ring:Hide()
     cell.glowHasAnts = false
-    if cell.glowWrapper then
-      stopEuiGlow(cell.glowWrapper)
-      cell.glowWrapper:Hide()
-    end
+    stopEuiGlow(cell)
+    if cell.glowWrapper then cell.glowWrapper:Hide() end
+    if cell.glowWrapperBold then cell.glowWrapperBold:Hide() end
   end
 end
 

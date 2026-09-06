@@ -941,11 +941,23 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     hpByKey[ei] = hp
     effByKey[ei] = efficiencyScoreOf(e, pull[ei])
   end
+  -- Bosses/minibosses are mandatory kills: the efficiency score (raw-health
+  -- denominator) always sinks them under 1, so the gray "no progress" gate and
+  -- the sort sink must skip them
+  local typeByKey = {}
+  for _, ei in ipairs(enemyIndices) do
+    typeByKey[ei] = staticMobType(enemies[ei])
+  end
+  local function isGrayKey(ei)
+    local s = effByKey[ei]
+    if not (s ~= nil and s < 1) then return false end
+    local mt = typeByKey[ei]
+    return mt ~= "boss" and mt ~= "miniboss"
+  end
   table.sort(enemyIndices, function(a, b)
     local ea, eb = enemies[a], enemies[b]
     -- low-efficiency (gray, score < 1) mobs carry no progress: always sink them last
-    local ga = effByKey[a] ~= nil and effByKey[a] < 1
-    local gb = effByKey[b] ~= nil and effByKey[b] < 1
+    local ga, gb = isGrayKey(a), isGrayKey(b)
     if ga ~= gb then return not ga end
     local la, lb = ea.level or 0, eb.level or 0
     if la ~= lb then return la > lb end
@@ -983,9 +995,9 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     nm:ClearAllPoints()
     nm:SetPoint("TOP", frame.portraits[i], "BOTTOM", 0, 0)
     nm:SetText(fitLabel(shortEnemyName(zh) or "", (count > PORTRAIT_PER_ROW) and 4 or PORTRAIT_LABEL_MAX_CHARS))
-    -- low efficiency (<1) paints ring + name + count gray; otherwise the mob-type color
-    local eff = effByKey[enemyIndices[i]]
-    local mc = (eff ~= nil and eff < 1) and GRAY_COLOR or MOB_COLORS[staticMobType(enemy)] or MOB_COLORS.other
+    -- low efficiency (<1) paints ring + name + count gray; bosses/minibosses are
+    -- exempt (mandatory kills); otherwise the mob-type color
+    local mc = isGrayKey(enemyIndices[i]) and GRAY_COLOR or MOB_COLORS[typeByKey[enemyIndices[i]]] or MOB_COLORS.other
     nm:SetTextColor(mc[1], mc[2], mc[3], 1)
     -- Tint the white circle ring around the portrait with the same mob-type color.
     frame.portraitOutlines[i]:SetVertexColor(mc[1], mc[2], mc[3], 1)
