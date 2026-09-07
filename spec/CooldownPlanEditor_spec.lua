@@ -137,6 +137,10 @@ describe("CooldownPlanEditor.lua", function()
           Show = function(self) self.shown = true end,
           IsShown = function(self) return self.shown end,
           ReloadPlans = function() reloadCount = reloadCount + 1 end,
+          -- Open() docks the editor beside the beacon via ClearAllPoints/SetPoint;
+          -- the mock only needs the calls to exist, their effect is irrelevant here.
+          ClearAllPoints = function() end,
+          SetPoint = function() end,
         }
       end
       Editor:Open()

@@ -9,12 +9,17 @@ describe("MDTAdapter.lua", function()
     _G.MythicDungeonToolsDB = nil
     _G.MythicDungeonToolsAPI = nil
     _G.C_AddOns = nil
+    -- Other specs' wow_mocks install a global MDT stub; the first test below
+    -- asserts the adapter neither reads nor creates that global, so start it
+    -- from a known-nil state regardless of suite run order.
+    _G.MDT = nil
   end)
 
   after_each(function()
     _G.MythicDungeonToolsDB = nil
     _G.MythicDungeonToolsAPI = nil
     _G.C_AddOns = nil
+    _G.MDT = nil
   end)
 
   it("uses the public MDT database without relying on the removed global", function()
