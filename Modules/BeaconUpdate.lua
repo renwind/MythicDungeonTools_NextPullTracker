@@ -121,6 +121,9 @@ function Beacon:Update()
   local pull = pulls and pulls[nextPull]
   local enemies = MDT.dungeonEnemies[dungeonIndex]
   BeaconFrame.renderEnemiesPortraits(frame, pull, enemies)
+  -- Note strips ride the same pull/enemies so wave switches refresh both
+  -- (design: NpcNotes 5.4).
+  BeaconFrame.renderNpcNotes(frame, pull, enemies)
 
   BeaconFrame.renderUpcomingPreview(
     frame,

@@ -8,6 +8,7 @@
   <Script file='Beacon.lua'/>
   <Script file='BeaconState.lua'/>
   <Script file='BeaconMinimap.lua'/>
+  <Script file='NpcNotes.lua'/>
   <Script file='BeaconFrame.lua'/>
   <Script file='BeaconUpdate.lua'/>
   <Script file='SettingsPullColors.lua'/>

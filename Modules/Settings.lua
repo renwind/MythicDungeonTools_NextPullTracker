@@ -107,6 +107,10 @@ local function buildPanel()
     "mapOnly", L["Show only the minimap, hiding the pull info panel."],
     refreshBeacon, false)
 
+  makeBeaconBool(category, "MDTNPT_BEACON_NOTES", L["Show Notes"],
+    "showNpcNotes", L["Show a note strip above the beacon for annotated mobs in the current pull."],
+    refreshBeacon, false)
+
   makeBeaconBool(category, "MDTNPT_BEACON_NONTANK", L["Show for non-tanks"],
     "showForNonTank", L["Display the beacon for healers and DPS, not only tanks."],
     refreshBeacon)

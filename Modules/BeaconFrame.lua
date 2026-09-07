@@ -8,6 +8,7 @@ local PullState = MDT_NPT.PullState
 local pairs, ipairs, unpack, string_format, tonumber = pairs, ipairs, unpack, string.format, tonumber
 local math_abs = math.abs
 local Theme = MDT_NPT.Theme
+local NpcNotes = MDT_NPT.NpcNotes
 
 -- MDT's AceLocale table (zhCN contains English->Chinese enemy names).
 -- MDT UI is load-on-demand, so its locale may not be registered at Start; use silent=true
@@ -78,10 +79,12 @@ local function staticMobType(enemy)
 end
 
 local FRAME_BASE_W, FRAME_BASE_H = 418, 216  -- wider minimap viewport (208) + 188 info panel;
-  -- height = minimap 208 + 4px margins so the map fills the left column exactly
-                                             -- height reserves the 2x4 portrait grid plus
-                                             -- plan rows whose 开/留 labels sit below icons
+                                             -- height = minimap 208 + 4px margins so the map fills the left column exactly
 local SCALE_MIN, SCALE_MAX = 0.5, 2.0
+local NOTE_STRIP_MAX = 8          -- note strips mirror the portrait slot count (design: NpcNotes 5.2)
+local NOTE_STRIP_W = 220          -- fixed strip width (design: NpcNotes 5.3)
+local NOTE_STRIP_H = 28
+local NOTE_STRIP_MAX_CHARS = 13   -- visible glyphs fitting the ~186px text area at 10pt CJK (design: NpcNotes 2.6)
 
 -- The old global MouseIsOver helper is no longer available in WoW 12.1.
 -- Frames and regions expose the equivalent check as an instance method.
@@ -275,6 +278,14 @@ local function create()
       for _, t in ipairs(self.mapBorder) do t:SetColorTexture(mc[1], mc[2], mc[3], 1) end
     end
     Theme.UpdateBorder(self._borderTextures)
+    -- Note strips follow the same chrome (fixed 0.6 alpha by design).
+    if self.noteStrips then
+      for i = 1, #self.noteStrips do
+        local strip = self.noteStrips[i]
+        strip._bgTexture:SetColorTexture(bgC[1], bgC[2], bgC[3], 0.6)
+        Theme.UpdateBorder(strip._borderTextures)
+      end
+    end
   end
 
   -- Register so Theme.Refresh() automatically re-skins this frame.
@@ -433,6 +444,12 @@ local function create()
       if not self.mobName then return end
       GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
       GameTooltip:SetText(self.mobName, 1, 1, 1)
+      -- Gold note line under the name (design: NpcNotes 4.1). Embedded colour
+      -- escapes in the note render natively and only tint their own span.
+      local note = self.npcKey and NpcNotes.get(self.npcKey)
+      if note then
+        GameTooltip:AddLine("✎ " .. note, 1, 0.82, 0, true)
+      end
       GameTooltip:Show()
     end)
     hover:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -460,7 +477,75 @@ local function create()
         end
       end
     end)
+    -- Middle-click opens the per-NPC note editor (design: NpcNotes 3.1).
+    -- text_arg1 = mob name (title), text_arg2 = NpcNotes key. Separate OnMouseUp
+    -- script so it keeps clear of the left/right OnMouseDown handlers above.
+    hover:SetScript("OnMouseUp", function(self, button)
+      if button == "MiddleButton" and self.npcKey then
+        GameTooltip:Hide()
+        StaticPopup_Show("MDT_NPT_NPC_NOTE", self.mobName, self.npcKey)
+      end
+    end)
     beaconFrame.portraitHovers[i] = hover
+
+    -- Note badge: small gold dot on the portrait's top-right corner marking
+    -- "this mob kind has a user note" (discoverability, design: NpcNotes 4.2).
+    local badge = beaconFrame:CreateTexture(nil, "OVERLAY")
+    badge:SetTexture(Theme.textures.circleWhite)
+    badge:SetVertexColor(1, 0.82, 0, 0.9)
+    badge:SetSize(6, 6)
+    badge:SetPoint("TOPRIGHT", portrait, "TOPRIGHT", 2, 2)
+    badge:Hide()
+    beaconFrame.noteBadges = beaconFrame.noteBadges or {}
+    beaconFrame.noteBadges[i] = badge
+  end
+
+  -- === NPC note strips (design: NpcNotes 5.2/5.3) ===
+  -- Up to 8 pre-created children stacked bottom-up above the beacon (strip 1
+  -- hugs the frame). Only content and visibility change per pull — zero frame
+  -- rebuilds; as children they inherit move/scale/alpha/Hide for free.
+  beaconFrame.noteStrips = {}
+  for i = 1, NOTE_STRIP_MAX do
+    local strip = CreateFrame("Frame", nil, beaconFrame)
+    strip:SetSize(NOTE_STRIP_W, NOTE_STRIP_H)
+    if i == 1 then
+      strip:SetPoint("BOTTOMLEFT", beaconFrame, "TOPLEFT", 0, 6)
+    else
+      strip:SetPoint("BOTTOMLEFT", beaconFrame.noteStrips[i - 1], "TOPLEFT", 0, 4)
+    end
+
+    local stripBg = strip:CreateTexture(nil, "BACKGROUND")
+    stripBg:SetAllPoints()
+    stripBg:SetColorTexture(Theme.colors.panelBg[1], Theme.colors.panelBg[2], Theme.colors.panelBg[3], 0.6)
+    strip._bgTexture = stripBg
+    strip._borderTextures = Theme.CreateBorder(strip)
+
+    local icon = strip:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(22, 22)
+    icon:SetPoint("TOPLEFT", strip, "TOPLEFT", 3, -3)
+    icon:SetMask("Interface\\Masks\\CircleMaskScalable")
+    strip.icon = icon
+
+    local stripText = strip:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
+    stripText:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+    stripText:SetPoint("RIGHT", strip, "RIGHT", -6, 0)
+    stripText:SetJustifyH("LEFT")
+    stripText:SetTextColor(1, 0.82, 0)
+    strip.text = stripText
+
+    -- Hover shows the full untruncated note; the strip itself only carries the
+    -- single-line truncation (design: NpcNotes 5.3).
+    strip:EnableMouse(true)
+    strip:SetScript("OnEnter", function(self)
+      if not self.note then return end
+      GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+      GameTooltip:SetText(self.rawName or "", 1, 1, 1)
+      GameTooltip:AddLine("✎ " .. self.note, 1, 0.82, 0, true)
+      GameTooltip:Show()
+    end)
+    strip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    strip:Hide()
+    beaconFrame.noteStrips[i] = strip
   end
 
   -- Progress bar (for active pull): sits between the info text and the portraits
@@ -587,6 +672,12 @@ local function create()
           function() return db.beacon.showCooldownPlan end,
           function()
             db.beacon.showCooldownPlan = not db.beacon.showCooldownPlan
+            Beacon:Update()
+          end)
+        rootDescription:CreateCheckbox(L["Show Notes"],
+          function() return db.beacon.showNpcNotes end,
+          function()
+            db.beacon.showNpcNotes = not db.beacon.showNpcNotes
             Beacon:Update()
           end)
         rootDescription:CreateButton(L["Edit Cooldown Plan"], function()
@@ -761,6 +852,14 @@ local function renderRouteComplete(frame, state, totalForcesMax)
     if frame.portraitHovers and frame.portraitHovers[i] then
       frame.portraitHovers[i]:Hide()
     end
+    if frame.noteBadges and frame.noteBadges[i] then
+      frame.noteBadges[i]:Hide()
+    end
+  end
+  -- This branch returns before renderNpcNotes runs, so hide the note strips
+  -- explicitly — no stale strips from the last pull (design: NpcNotes 5.5).
+  if frame.noteStrips then
+    for i = 1, #frame.noteStrips do frame.noteStrips[i]:Hide() end
   end
   for _, dot in ipairs(frame.dots) do dot:Hide() end
   Minimap.drawCurrentPullOutline(frame, nil)
@@ -988,6 +1087,7 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     layoutPortraitSlot(frame, i, count)
     local enemy = enemies[enemyIndices[i]]
     local displayId = enemy.displayId or 39490
+    local npcKey = NpcNotes.keyFor(enemy)
     SetPortraitTextureFromCreatureDisplayID(frame.portraits[i], displayId)
     frame.portraits[i]:Show()
     frame.portraitOutlines[i]:Show()
@@ -1037,7 +1137,12 @@ local function renderEnemiesPortraits(frame, pull, enemies)
       frame.portraitHovers[i].enemyIdx = tonumber(enemyIndices[i])
       frame.portraitHovers[i].cloneIdx = (type(clones) == "table" and clones[1]) or nil
       frame.portraitHovers[i].npcID = enemy.id
+      frame.portraitHovers[i].npcKey = npcKey
       frame.portraitHovers[i]:Show()
+    end
+    -- Gold dot when this mob kind carries a note (design: NpcNotes 4.2).
+    if frame.noteBadges and frame.noteBadges[i] then
+      frame.noteBadges[i]:SetShown(npcKey ~= nil and NpcNotes.get(npcKey) ~= nil)
     end
   end
   for i = count + 1, PORTRAIT_MAX do
@@ -1050,7 +1155,41 @@ local function renderEnemiesPortraits(frame, pull, enemies)
       frame.portraitHovers[i].enemyIdx = nil
       frame.portraitHovers[i].cloneIdx = nil
       frame.portraitHovers[i].npcID = nil
+      frame.portraitHovers[i].npcKey = nil
       frame.portraitHovers[i]:Hide()
+    end
+    if frame.noteBadges and frame.noteBadges[i] then
+      frame.noteBadges[i]:Hide()
+    end
+  end
+end
+
+---Fills the note strips above the beacon for the current pull (design:
+---NpcNotes 5.4). Called right after renderEnemiesPortraits with the same pull /
+---enemies so wave switches refresh both together. When the toggle is off (or
+---the db is not ready yet) all strips hide.
+local function renderNpcNotes(frame, pull, enemies)
+  if not frame.noteStrips then return end
+  local db = MDT_NPT:GetDB()
+  if not (db and db.beacon and db.beacon.showNpcNotes) then
+    for i = 1, NOTE_STRIP_MAX do frame.noteStrips[i]:Hide() end
+    return
+  end
+
+  local items = NpcNotes.collectForPull(pull, enemies)
+  for i = 1, NOTE_STRIP_MAX do
+    local strip = frame.noteStrips[i]
+    local item = items[i]
+    if item then
+      SetPortraitTextureFromCreatureDisplayID(strip.icon, item.displayId)
+      strip.text:SetText(NpcNotes.truncate(item.note, NOTE_STRIP_MAX_CHARS))
+      strip.rawName = item.rawName
+      strip.note = item.note
+      strip:Show()
+    else
+      strip.rawName = nil
+      strip.note = nil
+      strip:Hide()
     end
   end
 end
@@ -1110,6 +1249,12 @@ local function applyLayoutMode(frame)
       if frame.portraitNames and frame.portraitNames[i] then frame.portraitNames[i]:Hide() end
       if frame.portraitCounts and frame.portraitCounts[i] then frame.portraitCounts[i]:Hide() end
       if frame.portraitHovers[i] then frame.portraitHovers[i]:Hide() end
+      if frame.noteBadges and frame.noteBadges[i] then frame.noteBadges[i]:Hide() end
+    end
+    -- "Map only" means no info surfaces above the beacon either (design:
+    -- NpcNotes 5.5).
+    if frame.noteStrips then
+      for i = 1, #frame.noteStrips do frame.noteStrips[i]:Hide() end
     end
   end
 
@@ -1127,5 +1272,6 @@ MDT_NPT.BeaconFrame = {
   updateProgressBar = updateProgressBar,
   renderCurrentPullContribution = renderCurrentPullContribution,
   renderEnemiesPortraits = renderEnemiesPortraits,
+  renderNpcNotes = renderNpcNotes,
   renderUpcomingPreview = renderUpcomingPreview,
 }

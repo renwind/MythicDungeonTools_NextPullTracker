@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Added
 
+- Per-NPC notes: middle-click a beacon portrait to attach a note to that mob kind (save / cancel / clear popup). Notes are account-wide, keyed by NPC id (name as fallback), survive across pulls and dungeons, and support WoW colour escapes (`|cffFF4040text|r`). Annotated mobs show a gold line under the name in the portrait tooltip and a gold dot on the portrait corner. An optional "Show Notes" toggle (right-click menu / settings, `beacon.showNpcNotes`, off by default) adds up to 8 note strips above the beacon listing each annotated mob in the current pull — left icon, truncated single-line note, full text on hover.
+
 - Optional light-gray minimap dots for dungeon monsters that are not selected in any pull of the route. The color and opacity can be customized in Pull Colors.
 
 ## [1.4.5] - 2026-08-12

@@ -7,6 +7,8 @@ local Beacon = MDT_NPT.Beacon
 local Mdt = MDT_NPT.Mdt
 local Wow = MDT_NPT.Wow
 local Theme = MDT_NPT.Theme
+local L = MDT_NPT.L
+local NpcNotes = MDT_NPT.NpcNotes
 
 local function copyPalette(src)
   local t = {}
@@ -43,6 +45,10 @@ local defaultSavedVars = {
       -- Independent visibility switch for the cooldown-plan icon rows (design 12.2).
       -- Default off; when on, the Beacon shows even for non-tanks.
       showCooldownPlan = false,
+      -- Independent visibility switch for the NPC note strips shown above the
+      -- beacon (design: NpcNotes 5.1). Purely additive: follows the beacon's
+      -- existing visibility conditions, never forces the beacon visible.
+      showNpcNotes = false,
       -- Per-state colors for the minimap pull DOTS. {r, g, b, a}. Keys match
       -- BeaconMinimap's pull states.
       pullColors = copyPalette(Theme.pullColors),
@@ -54,6 +60,10 @@ local defaultSavedVars = {
     sync = {
       authority = "auto",
     },
+    -- User notes per NPC kind (design: NpcNotes 2.5). Keys come from
+    -- NpcNotes.keyFor ("npc:<id>" / "name:<name>"); values are raw strings
+    -- that may contain WoW colour escapes. Account-wide by design.
+    npcNotes = {},
     _migratedFromParent = false,
   },
   char = {
@@ -93,6 +103,44 @@ StaticPopupDialogs["NPT_BEACON_ASK"] = {
   whileDead = true,
   hideOnEscape = true,
   preferredIndex = 3,
+}
+
+-- Per-NPC note editor (design: NpcNotes 3.2). Shown via
+-- StaticPopup_Show("MDT_NPT_NPC_NOTE", mobName, npcKey): text_arg1 is the mob
+-- name (fills the "%s" in the title), text_arg2 is the NpcNotes key the
+-- handlers read/write. Three buttons because ESC maps to button2 — a
+-- save/clear-only pair would make "cancel" clear the note.
+StaticPopupDialogs["MDT_NPT_NPC_NOTE"] = {
+  text = L["NPC Note - %s"],
+  button1 = L["Save Note"],
+  button2 = CANCEL,
+  button3 = L["Clear Note"],
+  hasEditBox = true,
+  hideOnEscape = true,
+  whileDead = true,
+  preferredIndex = 3,
+  OnShow = function(self)
+    -- The edit box shows the raw stored text (colour escapes render live),
+    -- pre-selected so typing overwrites.
+    self.editBox:SetText(NpcNotes.get(self.text_arg2) or "")
+    self.editBox:SetFocus()
+    self.editBox:HighlightText()
+  end,
+  EditBoxOnEnterPressed = function(self)
+    self:GetParent().button1:Click()
+  end,
+  EditBoxOnEscapePressed = function(self)
+    self:GetParent():Hide()
+  end,
+  OnAccept = function(self)
+    NpcNotes.set(self.text_arg2, self.editBox:GetText())
+    if Beacon.Update then Beacon:Update() end
+  end,
+  OnCancel = function() end, -- just close; ESC lands here
+  OnAlt = function(self)
+    NpcNotes.clear(self.text_arg2)
+    if Beacon.Update then Beacon:Update() end
+  end,
 }
 
 function MDT_NPT:GetDB() return db end

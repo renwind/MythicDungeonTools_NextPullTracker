@@ -16,6 +16,12 @@ L["Burst Potion"] = "爆发药水"
 L["Ascendance"] = "升腾"
 L["Apply"] = "应用"
 L["Potion Not Specified"] = "未指定"
+-- NPC notes (design: NpcNotes 8)
+L["Show Notes"] = "显示注释"
+L["NPC Note - %s"] = "注释：%s"
+L["Save Note"] = "保存"
+L["Clear Note"] = "清除"
+L["Show a note strip above the beacon for annotated mobs in the current pull."] = "在信标上方为当前波次有注释的怪物显示注释条。"
 -- base beacon keys (Chinese client)
 L["mobs"] = "只"
 L["forces"] = "进度"
