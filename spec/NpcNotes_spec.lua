@@ -136,6 +136,15 @@ describe("NpcNotes — collectForPull", function()
     assert.equals("note for beta", items[1].note)
   end)
 
+  it("skips ghost pull entries (empty clone lists) even when annotated", function()
+    mockDb.npcNotes["npc:101"] = "ghost note"
+    mockDb.npcNotes["npc:102"] = "real note"
+    -- [2] is a route-edit leftover: key present, clone list empty
+    local items = NpcNotes.collectForPull({ [2] = {}, [7] = { 5 } }, makeEnemies())
+    assert.equals(1, #items)
+    assert.equals("npc:102", items[1].key)
+  end)
+
   it("sorts entries by enemyIndex ascending regardless of pull key order", function()
     mockDb.npcNotes["npc:101"] = "a"
     mockDb.npcNotes["npc:103"] = "c"
@@ -368,8 +377,9 @@ describe("Core.lua — MDT_NPT_NPC_NOTE popup", function()
 
   it("OnShow prefills the edit box with the stored note and focuses it", function()
     mockDb.npcNotes["npc:184122"] = "会施放束缚之网，优先打断"
+    _G.MDT_NPT.noteEdit = { key = "npc:184122", name = "虚空织网者" }
     editBox = makeEditBox()
-    local dialog = { text_arg1 = "虚空织网者", text_arg2 = "npc:184122", editBox = editBox }
+    local dialog = { editBox = editBox }
     _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnShow(dialog)
     assert.equals("会施放束缚之网，优先打断", editBox.text)
     assert.equals(1, editBox.focusCount)
@@ -377,9 +387,10 @@ describe("Core.lua — MDT_NPT_NPC_NOTE popup", function()
   end)
 
   it("OnAccept saves the edited text and refreshes the beacon", function()
+    _G.MDT_NPT.noteEdit = { key = "npc:184122", name = "虚空织网者" }
     editBox = makeEditBox()
     editBox:SetText("|cffff4040优先打断|r")
-    local dialog = { text_arg1 = "虚空织网者", text_arg2 = "npc:184122", editBox = editBox }
+    local dialog = { editBox = editBox }
     _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnAccept(dialog)
     assert.equals("|cffff4040优先打断|r", mockDb.npcNotes["npc:184122"])
     assert.equals(1, beaconUpdates)
@@ -387,9 +398,10 @@ describe("Core.lua — MDT_NPT_NPC_NOTE popup", function()
 
   it("OnAccept with an empty string clears the note (set semantics)", function()
     mockDb.npcNotes["npc:184122"] = "old"
+    _G.MDT_NPT.noteEdit = { key = "npc:184122", name = "虚空织网者" }
     editBox = makeEditBox()
     editBox:SetText("")
-    local dialog = { text_arg1 = "虚空织网者", text_arg2 = "npc:184122", editBox = editBox }
+    local dialog = { editBox = editBox }
     _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnAccept(dialog)
     assert.is_nil(mockDb.npcNotes["npc:184122"])
     assert.equals(1, beaconUpdates)
@@ -397,7 +409,8 @@ describe("Core.lua — MDT_NPT_NPC_NOTE popup", function()
 
   it("OnAlt clears the stored note and refreshes the beacon", function()
     mockDb.npcNotes["npc:184122"] = "old"
-    local dialog = { text_arg1 = "虚空织网者", text_arg2 = "npc:184122", editBox = makeEditBox() }
+    _G.MDT_NPT.noteEdit = { key = "npc:184122", name = "虚空织网者" }
+    local dialog = { editBox = makeEditBox() }
     _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnAlt(dialog)
     assert.is_nil(mockDb.npcNotes["npc:184122"])
     assert.equals(1, beaconUpdates)

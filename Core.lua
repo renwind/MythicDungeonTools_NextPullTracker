@@ -110,6 +110,15 @@ StaticPopupDialogs["NPT_BEACON_ASK"] = {
 -- name (fills the "%s" in the title), text_arg2 is the NpcNotes key the
 -- handlers read/write. Three buttons because ESC maps to button2 — a
 -- save/clear-only pair would make "cancel" clear the note.
+-- 12.x StaticPopup renamed dialog fields (editBox -> EditBox, button1 ->
+-- Buttons[1]); keep both spellings so the handlers work across client versions.
+local function popupEditBox(dialog)
+  return dialog.editBox or dialog.EditBox
+end
+local function popupAcceptButton(dialog)
+  return dialog.button1 or (dialog.Buttons and dialog.Buttons[1])
+end
+
 StaticPopupDialogs["MDT_NPT_NPC_NOTE"] = {
   text = L["NPC Note - %s"],
   button1 = L["Save Note"],
@@ -120,25 +129,45 @@ StaticPopupDialogs["MDT_NPT_NPC_NOTE"] = {
   whileDead = true,
   preferredIndex = 3,
   OnShow = function(self)
+    -- 12.x StaticPopup_Show no longer forwards text_arg1/2 to the dialog, so
+    -- the click site stashes { key, name } in MDT_NPT.noteEdit instead.
+    local pe = MDT_NPT.noteEdit
+    if pe and self.Text then
+      self.Text:SetText((L["NPC Note - %s"]):format(pe.name or ""))
+    end
     -- The edit box shows the raw stored text (colour escapes render live),
     -- pre-selected so typing overwrites.
-    self.editBox:SetText(NpcNotes.get(self.text_arg2) or "")
-    self.editBox:SetFocus()
-    self.editBox:HighlightText()
+    local eb = popupEditBox(self)
+    if eb then
+      eb:SetText(pe and NpcNotes.get(pe.key) or "")
+      eb:SetFocus()
+      eb:HighlightText()
+    end
   end,
   EditBoxOnEnterPressed = function(self)
-    self:GetParent().button1:Click()
+    -- 12.x StaticPopup: the edit box is no longer a direct child of the dialog
+    -- frame; owningDialog points at it (GetParent() returns a buttonless
+    -- container, hence the nil button1 crash).
+    local dialog = self.owningDialog or self:GetParent()
+    local btn = dialog and popupAcceptButton(dialog)
+    if btn then btn:Click() end
   end,
   EditBoxOnEscapePressed = function(self)
-    self:GetParent():Hide()
+    local dialog = self.owningDialog or self:GetParent()
+    if dialog then dialog:Hide() end
   end,
   OnAccept = function(self)
-    NpcNotes.set(self.text_arg2, self.editBox:GetText())
+    local pe = MDT_NPT.noteEdit
+    if pe then
+      local eb = popupEditBox(self)
+      NpcNotes.set(pe.key, eb and eb:GetText() or "")
+    end
     if Beacon.Update then Beacon:Update() end
   end,
   OnCancel = function() end, -- just close; ESC lands here
   OnAlt = function(self)
-    NpcNotes.clear(self.text_arg2)
+    local pe = MDT_NPT.noteEdit
+    if pe then NpcNotes.clear(pe.key) end
     if Beacon.Update then Beacon:Update() end
   end,
 }

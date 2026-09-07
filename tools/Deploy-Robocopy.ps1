@@ -6,8 +6,9 @@
 
 .DESCRIPTION
     工作方式：
-      1. 检测当前 PowerShell 是否以管理员身份运行（写入 C:\Program Files (x86) 必需）。
-         未提权时直接报错退出，并给出操作指引 —— 本脚本【不会】尝试自动提权后静默修改系统目录。
+      1. 检测当前 PowerShell 是否以管理员身份运行；仅当部署目标位于系统保护目录
+         （C:\Program Files 等）时才强制提权，未提权直接报错退出；
+         默认 D 盘目标普通权限即可写入。本脚本【不会】尝试自动提权后静默修改系统目录。
       2. 把 AddOns 里现有的 NPT 目录完整备份到 <仓库根>\deploy\backup\<时间戳>\（只读源，不动原文件）。
       3. 用 robocopy /MIR 把仓库根镜像同步到 AddOns 目录，
          但排除开发专属内容：tools\、.git\、deploy\ 目录，以及 .gitignore、.gitattributes、README-DEV.md 文件。
@@ -32,7 +33,7 @@
     powershell -ExecutionPolicy Bypass -File .\tools\Deploy-Robocopy.ps1 -DryRun
 
 .EXAMPLE
-    # 真正部署：必须以「管理员身份」打开 PowerShell 后执行
+    # 真正部署：目标为系统目录时必须以「管理员身份」打开 PowerShell；默认 D 盘目标无需提权
     powershell -ExecutionPolicy Bypass -File .\tools\Deploy-Robocopy.ps1
 
 .NOTES
@@ -59,14 +60,16 @@ try {
 # ========================= 可配置区 =========================
 # 插件在 WoW 安装目录中的真实位置（部署目标）。
 # 如果你的 WoW 装在别处，改这一行即可，或用 -TargetPath 参数临时覆盖。
-$DefaultTargetPath = 'C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\MythicDungeonTools_NextPullTracker'
+# 本机游戏实际从 D 盘加载（C 盘那份无人读取），故默认指向 D 盘。
+$DefaultTargetPath = 'D:\software\World of Warcraft\_retail_\Interface\AddOns\MythicDungeonTools_NextPullTracker'
 
 # 插件目录名（用于日志与校验）
 $AddonName = 'MythicDungeonTools_NextPullTracker'
 
 # 同步时需要排除的「开发专属」目录（相对仓库根，robocopy /XD 用绝对路径传入）
 # .qoder/.github/.tmp-npt-task：IDE/CI/临时任务目录，绝不进游戏目录
-$ExcludeDirs = @('tools', '.git', 'deploy', 'Libs', '.qoder', '.github', '.tmp-npt-task')
+# 注意：Libs 不排除——toc 运行时加载 LibStub/CallbackHandler/AceDB，镜像必须带上
+$ExcludeDirs = @('tools', '.git', 'deploy', '.qoder', '.github', '.tmp-npt-task')
 
 # 同步时需要排除的「开发专属」文件（robocopy /XF 用绝对路径传入）
 $ExcludeFiles = @('.gitignore', '.gitattributes', 'README-DEV.md')
@@ -151,12 +154,14 @@ $isAdmin = Test-IsAdmin
 Write-Step "管理员权限: $(if ($isAdmin) { '是' } else { '否' })"
 
 if (-not $isAdmin) {
+    # 系统保护目录才需要提权；D 盘等非系统目标普通权限即可写入
+    $needsAdmin = $TargetPath -match '^[A-Za-z]:\\(Program Files|Program Files \(x86\)|Windows)\\'
     if ($DryRun) {
-        Write-Warning "当前未提权。-DryRun 只读取不写入，可以继续；真正部署时必须以管理员身份运行。"
+        Write-Warning "当前未提权。-DryRun 只读取不写入，可以继续；目标为系统目录时真正部署必须以管理员身份运行。"
     }
-    else {
+    elseif ($needsAdmin) {
         Write-Host ''
-        Write-Host '【已中止】部署目标位于 C:\Program Files (x86)，写入需要管理员权限。' -ForegroundColor Red
+        Write-Host "【已中止】部署目标位于系统保护目录（$TargetPath），写入需要管理员权限。" -ForegroundColor Red
         Write-Host ''
         Write-Host '请按以下任一方式以管理员身份重开 PowerShell 后再执行本脚本：' -ForegroundColor Yellow
         Write-Host '  1) 开始菜单搜索 "PowerShell" -> 右键 -> "以管理员身份运行"'
@@ -167,7 +172,10 @@ if (-not $isAdmin) {
         Write-Host '想先不写入、只看会改哪些文件，请加 -DryRun：' -ForegroundColor Yellow
         Write-Host "  .\tools\Deploy-Robocopy.ps1 -DryRun"
         Write-Host ''
-        throw '未以管理员身份运行，部署已中止。'
+        throw '未以管理员身份运行且目标为系统保护目录，部署已中止。'
+    }
+    else {
+        Write-Warning "当前未提权，但目标（$TargetPath）不在系统保护目录，继续部署。"
     }
 }
 

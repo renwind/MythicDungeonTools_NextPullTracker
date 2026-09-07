@@ -68,8 +68,7 @@ local function borderColorFor(entry, mismatch)
     -- conflict: marked use but still on CD
     local cdID = (entry.seed.kind == "item") and entry.seed.useEffectSpellID or entry.resolved
     if cdID then
-      local info = C_Spell.GetSpellCooldown(cdID)
-      if info and info.startTime and info.startTime > 0 and info.duration and info.duration > 1.5 then
+      if isLongCD(C_Spell.GetSpellCooldown(cdID)) then
         return COLOR_CONFLICT
       end
     end
@@ -262,6 +261,31 @@ end
 
 local cdTickers = {}
 
+---12.x secret-value safe probe: true when the cooldown is ticking and longer
+---than minSec. startTime/duration can be secret numbers; any comparison on them
+---hard-errors while execution is tainted, so the probe runs inside pcall and a
+---blocked probe defaults to "long CD" (the safe direction for plan icons).
+local function isLongCD(info, minSec)
+  if not (info and info.isEnabled and info.isActive) then return false end
+  local long = true
+  pcall(function() long = info.duration > (minSec or 1.5) and info.startTime > 0 end)
+  return long
+end
+
+---Sets the cell's sweep + CD label from possibly-secret numbers; both consumers
+---run inside pcall so a tainted stack degrades (no sweep / empty label) instead
+---of erroring every tick.
+local function applyCdSweep(cell, info)
+  pcall(function() cell.cd:SetCooldown(info.startTime, info.duration) end)
+  cell.cd:SetHideCountdownNumbers(true)  -- numbers live under the icon now
+  if cell.label then
+    local ok = pcall(function()
+      cell.label:SetText(formatCD(info.startTime + info.duration - GetTime()))
+    end)
+    if not ok then cell.label:SetText("") end
+  end
+end
+
 local function startCDTicker(cell, getCDID)
   if cell.cdTicker then return end
   cell.cdTicker = C_Timer.NewTicker(0.1, function()
@@ -273,10 +297,8 @@ local function startCDTicker(cell, getCDID)
       return
     end
     local info = C_Spell.GetSpellCooldown(cdID)
-    if info and info.startTime and info.startTime > 0 and info.duration and info.duration > 1.5 then
-      cell.cd:SetCooldown(info.startTime, info.duration)
-      cell.cd:SetHideCountdownNumbers(true)  -- numbers live under the icon now
-      if cell.label then cell.label:SetText(formatCD(info.startTime + info.duration - GetTime())) end
+    if isLongCD(info) then
+      applyCdSweep(cell, info)
       setCellGlow(cell, false)  -- still on CD: no ready glow
     else
       cell.cd:Clear()
@@ -308,7 +330,7 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
       local onCD = false
       if cdID2 then
         local ci = C_Spell.GetSpellCooldown(cdID2)
-        if ci and ci.startTime and ci.startTime > 0 and ci.duration and ci.duration > 1.5 then onCD = true end
+        if isLongCD(ci) then onCD = true end
       end
       stateColor = onCD and COLOR_CONFLICT or COLOR_USE
     else
@@ -331,11 +353,9 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
     if showCD then
       startCDTicker(cell, function() return cdID end)
       local info = cdID and C_Spell.GetSpellCooldown(cdID)
-      if info and info.startTime and info.startTime > 0 and info.duration and info.duration > 1.5 then
+      if isLongCD(info) then
         cell.cd:Show()
-        cell.cd:SetCooldown(info.startTime, info.duration)
-        cell.cd:SetHideCountdownNumbers(true)
-        if cell.label then cell.label:SetText(formatCD(info.startTime + info.duration - GetTime())) end
+        applyCdSweep(cell, info)
       else
         cell.cd:Clear()
         cell.cd:Hide()
@@ -346,7 +366,7 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
         cell.label:SetTextColor(lc[1], lc[2], lc[3], 1)
         cell.label:Show()
       end
-      local onCDNow = info and info.startTime and info.startTime > 0 and info.duration and info.duration > 1.5
+      local onCDNow = isLongCD(info)
       setCellGlow(cell, cell.glowAllowed and cell.planUse and not onCDNow)
     else
       cell.cd:Clear()

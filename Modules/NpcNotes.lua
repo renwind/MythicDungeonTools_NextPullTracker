@@ -101,7 +101,15 @@ function NpcNotes.collectForPull(pull, enemies)
   local indices = {}
   for enemyIndex in pairs(pull) do
     local n = tonumber(enemyIndex)
-    if n and enemies[enemyIndex] then indices[#indices + 1] = n end
+    if n and enemies[enemyIndex] then
+      -- skip ghost entries: route editing leaves enemy keys with empty clone
+      -- lists behind; same gate as renderEnemiesPortraits so the strips never
+      -- list a mob that is not actually in the pull
+      local clones = pull[enemyIndex]
+      if (type(clones) == "table" and #clones > 0) or type(clones) == "number" then
+        indices[#indices + 1] = n
+      end
+    end
   end
   table.sort(indices)
 

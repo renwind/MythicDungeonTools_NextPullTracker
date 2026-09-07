@@ -74,14 +74,24 @@ local function lustReadyIn()
   local r = 0
   local now = GetTime()
   local sated = hasAnyAura(SATED)
-  if sated and sated.expirationTime and not isSecret(sated.expirationTime) then
-    r = math.max(r, sated.expirationTime - now)
+  -- 12.x secret values: any comparison on a secret number hard-errors while
+  -- execution is tainted, so every numeric probe runs inside pcall
+  if sated and sated.expirationTime then
+    pcall(function()
+      if not isSecret(sated.expirationTime) then
+        r = math.max(r, sated.expirationTime - now)
+      end
+    end)
   end
   local sid = getBloodlustID()
   if sid and C_Spell and C_Spell.GetSpellCooldown then
     local cd = C_Spell.GetSpellCooldown(sid)
-    if cd and cd.duration and cd.duration > 2 then
-      r = math.max(r, (cd.startTime or 0) + cd.duration - now)
+    if cd and cd.isEnabled and cd.isActive then
+      pcall(function()
+        if cd.duration > 2 then
+          r = math.max(r, cd.startTime + cd.duration - now)
+        end
+      end)
     end
   end
   return r, sid

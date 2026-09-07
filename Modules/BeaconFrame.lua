@@ -483,7 +483,11 @@ local function create()
     hover:SetScript("OnMouseUp", function(self, button)
       if button == "MiddleButton" and self.npcKey then
         GameTooltip:Hide()
-        StaticPopup_Show("MDT_NPT_NPC_NOTE", self.mobName, self.npcKey)
+        -- 12.x StaticPopup_Show drops its text args on the dialog, but the
+        -- engine still formats text ("%s") with arg1 during SetupText, so pass
+        -- the mob name for the title; the key rides in MDT_NPT.noteEdit.
+        MDT_NPT.noteEdit = { key = self.npcKey, name = self.mobName }
+        StaticPopup_Show("MDT_NPT_NPC_NOTE", self.mobName or "")
       end
     end)
     beaconFrame.portraitHovers[i] = hover
