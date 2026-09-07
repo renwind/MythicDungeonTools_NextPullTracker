@@ -16,6 +16,7 @@ ignore:
 - .github
 - Developer
 - spec
+- tools
 
 manual-changelog:
 filename: CHANGELOG.md

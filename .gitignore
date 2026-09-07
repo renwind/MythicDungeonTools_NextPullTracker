@@ -5,3 +5,4 @@
 *.zip
 deploy/
 *.bak-*
+.tmp-npt-task/
