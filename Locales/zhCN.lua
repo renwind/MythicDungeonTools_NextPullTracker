@@ -19,9 +19,10 @@ L["Potion Not Specified"] = "未指定"
 -- NPC notes (design: NpcNotes 8)
 L["Show Notes"] = "显示注释"
 L["NPC Note - %s"] = "注释：%s"
+L["Pull Note - %s"] = "注释：第 %s 波"
 L["Save Note"] = "保存"
 L["Clear Note"] = "清除"
-L["Show a note strip above the beacon for annotated mobs in the current pull."] = "在信标上方为当前波次有注释的怪物显示注释条。"
+L["Show note strips above the beacon for the current pull and its annotated mobs."] = "在信标上方显示当前波次注释条，以及该波有注释的怪物条。"
 -- base beacon keys (Chinese client)
 L["mobs"] = "只"
 L["forces"] = "进度"

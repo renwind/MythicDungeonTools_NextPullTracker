@@ -9,6 +9,7 @@ local pairs, ipairs, unpack, string_format, tonumber = pairs, ipairs, unpack, st
 local math_abs = math.abs
 local Theme = MDT_NPT.Theme
 local NpcNotes = MDT_NPT.NpcNotes
+local PullNotes = MDT_NPT.PullNotes
 
 -- MDT's AceLocale table (zhCN contains English->Chinese enemy names).
 -- MDT UI is load-on-demand, so its locale may not be registered at Start; use silent=true
@@ -82,9 +83,26 @@ local FRAME_BASE_W, FRAME_BASE_H = 418, 216  -- wider minimap viewport (208) + 1
                                              -- height = minimap 208 + 4px margins so the map fills the left column exactly
 local SCALE_MIN, SCALE_MAX = 0.5, 2.0
 local NOTE_STRIP_MAX = 8          -- note strips mirror the portrait slot count (design: NpcNotes 5.2)
-local NOTE_STRIP_W = 220          -- fixed strip width (design: NpcNotes 5.3)
+local NOTE_STRIP_W = FRAME_BASE_W -- strips span the full beacon width so their edges line up with it
 local NOTE_STRIP_H = 28
-local NOTE_STRIP_MAX_CHARS = 13   -- visible glyphs fitting the ~186px text area at 10pt CJK (design: NpcNotes 2.6)
+local NOTE_STRIP_MAX_CHARS = 26   -- visible glyphs fitting the ~383px text area at 10pt CJK (~13px each),
+                                  -- held under 29 to leave room for inline |T icons (design: NpcNotes 2.6)
+-- Strips float directly over the game world with no panel behind them, so they
+-- cannot reuse the in-window plan band's light accent @0.28: a bright backdrop
+-- bled through and washed out the gold note text. Darken the accent and make it
+-- near-opaque instead — dropping alpha alone would only make it more see-through.
+local NOTE_STRIP_BG_DIM = 0.32    -- accent multiplier -> deep teal
+local NOTE_STRIP_BG_ALPHA = 0.85
+
+---Applies the shared note-strip chrome: darkened accent fill + white 1px border.
+---Called at creation and again from RefreshChrome, so the two paths can never
+---drift apart and the wave strip is guaranteed identical to the mob strips.
+local function applyNoteStripChrome(strip)
+  local bandC = Theme.colors.accent
+  strip._bgTexture:SetColorTexture(bandC[1] * NOTE_STRIP_BG_DIM, bandC[2] * NOTE_STRIP_BG_DIM,
+    bandC[3] * NOTE_STRIP_BG_DIM, NOTE_STRIP_BG_ALPHA)
+  Theme.UpdateBorder(strip._borderTextures)
+end
 
 -- The old global MouseIsOver helper is no longer available in WoW 12.1.
 -- Frames and regions expose the equivalent check as an instance method.
@@ -229,12 +247,69 @@ local function create()
   beaconFrame:SetFrameStrata("MEDIUM")
   beaconFrame:SetClampedToScreen(true)
   beaconFrame:SetMovable(true)
-  beaconFrame:EnableMouse(true)
+  -- Mouse enablement is owned by applyClickThrough below (Alt-gated), so it is
+  -- deliberately not set here. RegisterForDrag only fires while mouse-enabled.
   beaconFrame:RegisterForDrag("LeftButton")
 
   local anchor = MDT_NPT:GetBeaconState()
   beaconFrame:SetPoint(anchor.anchorFrom, UIParent, anchor.anchorTo, anchor.xoffset, anchor.yoffset)
   beaconFrame:SetScale(anchor.scale)
+
+  ---Persists the frame's current anchor so the position survives a reload.
+  ---Shared by OnDragStop and the click-through handler: releasing Alt mid-drag
+  ---has to end the move itself, which bypasses OnDragStop entirely.
+  local function saveBeaconAnchor()
+    local point, _, relativePoint, x, y = beaconFrame:GetPoint()
+    local state = MDT_NPT:GetBeaconState()
+    state.anchorFrom = point
+    state.anchorTo = relativePoint
+    state.xoffset = x
+    state.yoffset = y
+  end
+
+  ---Shows or hides the hover-only controls (four header buttons + resize grip).
+  ---Shared by OnEnter/OnLeave and the click-through handler: a mouse-disabled
+  ---frame never fires OnEnter, so without this the controls would sit at alpha
+  ---0 with no way to discover them. Nil-safe — the first call happens before
+  ---the controls exist.
+  local function setControlsAlpha(alpha)
+    for _, widget in ipairs({ beaconFrame.completeBtn, beaconFrame.skipBtn,
+                              beaconFrame.revertBtn, beaconFrame.planBtn,
+                              beaconFrame.resizeGrip }) do
+      if widget then widget:SetAlpha(alpha) end
+    end
+  end
+
+  ---Click-through is the default: the beacon is read-only info floating over the
+  ---world, so its blank space must let clicks reach the mobs and ground behind
+  ---it. WoW hit-testing is rect-based (alpha is irrelevant — an alpha-0 frame
+  ---still blocks), which makes EnableMouse(false) the only lever.
+  ---
+  ---Holding Alt restores the mouse, so dragging, the right-click menu and the
+  ---map wheel come back without permanently giving up any screen area. Child
+  ---widgets keep their own EnableMouse(true): portraits, header buttons and
+  ---cooldown cells stay clickable whether or not Alt is held.
+  local function applyClickThrough()
+    local interactive = IsAltKeyDown() and true or false
+    if not interactive and beaconFrame:IsMouseEnabled() then
+      -- ending the drag here skips OnDragStop, so persist the anchor explicitly
+      beaconFrame:StopMovingOrSizing()
+      saveBeaconAnchor()
+    end
+    beaconFrame:EnableMouse(interactive)
+    -- Alt doubles as the "interactive now" cue: reveal the hover-only controls
+    -- on the way in, drop them on the way out.
+    setControlsAlpha(interactive and 0.7 or 0)
+  end
+
+  beaconFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
+  beaconFrame:SetScript("OnEvent", function(_, event)
+    -- Re-read Alt on any modifier change instead of parsing the event's key
+    -- argument: covers LALT/RALT alike and self-corrects when another modifier
+    -- is what fired the event.
+    if event == "MODIFIER_STATE_CHANGED" then applyClickThrough() end
+  end)
+  applyClickThrough()
   -- revert of the half-opacity experiment: frame alpha stays full (content must
   -- not fade); the panel translucency lives on the background texture instead
   if db and db.beacon and db.beacon.alphaHalfApplied then
@@ -278,14 +353,12 @@ local function create()
       for _, t in ipairs(self.mapBorder) do t:SetColorTexture(mc[1], mc[2], mc[3], 1) end
     end
     Theme.UpdateBorder(self._borderTextures)
-    -- Note strips follow the same chrome (fixed 0.6 alpha by design).
+    -- Note strips keep their darkened accent chrome (NOTE_STRIP_BG_DIM), unlike
+    -- the lighter in-window plan band above. The wave strip shares it.
     if self.noteStrips then
-      for i = 1, #self.noteStrips do
-        local strip = self.noteStrips[i]
-        strip._bgTexture:SetColorTexture(bgC[1], bgC[2], bgC[3], 0.6)
-        Theme.UpdateBorder(strip._borderTextures)
-      end
+      for i = 1, #self.noteStrips do applyNoteStripChrome(self.noteStrips[i]) end
     end
+    if self.pullNoteStrip then applyNoteStripChrome(self.pullNoteStrip) end
   end
 
   -- Register so Theme.Refresh() automatically re-skins this frame.
@@ -305,6 +378,51 @@ local function create()
   beaconFrame.minimapFrame:SetScript("OnMouseWheel", function(_, delta)
     Minimap.adjustUserZoom(beaconFrame, delta)
     Beacon:Update()
+  end)
+
+  -- Interactive island (design: 波次注释 6.1). The map tiles are opaque, so
+  -- click-through here has no visual value and only risks mis-clicking a mob the
+  -- player cannot see; the beacon's translucent blank space keeps the Alt-gated
+  -- pass-through instead.
+  beaconFrame.minimapFrame:EnableMouse(true)
+  -- Enabling the mouse swallows left-clicks that used to fall through to the
+  -- beacon's own drag handler, so forward the drag explicitly — otherwise "drag
+  -- the map to move the beacon" is silently lost.
+  beaconFrame.minimapFrame:RegisterForDrag("LeftButton")
+  beaconFrame.minimapFrame:SetScript("OnDragStart", function()
+    if MDT_NPT:GetBeaconState().locked then return end
+    beaconFrame:StartMoving()
+  end)
+  beaconFrame.minimapFrame:SetScript("OnDragStop", function()
+    beaconFrame:StopMovingOrSizing()
+    saveBeaconAnchor()
+  end)
+  -- Middle-click edits this wave's note — the same gesture language as
+  -- middle-clicking a portrait for that mob's note.
+  beaconFrame.minimapFrame:SetScript("OnMouseUp", function(_, button)
+    if button ~= "MiddleButton" then return end
+    local state = MDT_NPT.state
+    local uid, pullIndex = PullNotes.locate(state)
+    if not uid then return end  -- not tracking yet: nothing to key the note by
+    -- Same fetch path BeaconUpdate uses, so the fingerprint snapshots exactly
+    -- the wave the beacon is currently showing.
+    local preset = MDT:GetCurrentPreset(state.dungeonIndex)
+    local pulls = preset and preset.value and preset.value.pulls
+    MDT_NPT.noteEdit = {
+      kind = "pull", uid = uid, pullIndex = pullIndex,
+      name = tostring(pullIndex),
+      pull = pulls and pulls[pullIndex],
+      enemies = MDT.dungeonEnemies and MDT.dungeonEnemies[state.dungeonIndex],
+    }
+    -- Open MRT's tactic (Note) editor alongside so tactic text can be copied
+    -- straight across; silent no-op when MRT is absent.
+    local MRT = _G.MRT
+    if MRT and MRT.Options and MRT.Options.OpenByModuleName then
+      pcall(MRT.Options.OpenByModuleName, MRT.Options, "Note")
+    end
+    -- arg1 only feeds the engine's own "%s" formatting during SetupText; the
+    -- real title is written in OnShow. A pre-formatted string would nest two.
+    StaticPopup_Show("MDT_NPT_NPC_NOTE", tostring(pullIndex))
   end)
 
   -- Dark background so the viewport is visible even before tiles load
@@ -487,6 +605,12 @@ local function create()
         -- engine still formats text ("%s") with arg1 during SetupText, so pass
         -- the mob name for the title; the key rides in MDT_NPT.noteEdit.
         MDT_NPT.noteEdit = { key = self.npcKey, name = self.mobName }
+        -- Open MRT's tactic (Note) editor alongside our popup so tactic text
+        -- can be copied straight across; silent no-op when MRT is absent.
+        local MRT = _G.MRT
+        if MRT and MRT.Options and MRT.Options.OpenByModuleName then
+          pcall(MRT.Options.OpenByModuleName, MRT.Options, "Note")
+        end
         StaticPopup_Show("MDT_NPT_NPC_NOTE", self.mobName or "")
       end
     end)
@@ -504,14 +628,57 @@ local function create()
     beaconFrame.noteBadges[i] = badge
   end
 
-  -- === NPC note strips (design: NpcNotes 5.2/5.3) ===
-  -- Up to 8 pre-created children stacked bottom-up above the beacon (strip 1
-  -- hugs the frame). Only content and visibility change per pull — zero frame
-  -- rebuilds; as children they inherit move/scale/alpha/Hide for free.
+  -- === Note strips (design: NpcNotes 5.2/5.3, 波次注释 7) ===
+  -- The per-wave strip owns the slot closest to the beacon; up to 8 per-mob
+  -- strips stack above it. All are pre-created children, so only content and
+  -- visibility change per pull — zero frame rebuilds, and they inherit the
+  -- parent's move/scale/alpha/Hide for free.
+  do
+    local strip = CreateFrame("Frame", nil, beaconFrame)
+    strip:SetSize(NOTE_STRIP_W, NOTE_STRIP_H)
+    strip:SetPoint("BOTTOMLEFT", beaconFrame, "TOPLEFT", 0, 6)
+
+    local stripBg = strip:CreateTexture(nil, "BACKGROUND")
+    stripBg:SetAllPoints()
+    strip._bgTexture = stripBg
+    strip._borderTextures = Theme.CreateBorder(strip)
+    applyNoteStripChrome(strip)
+
+    -- No mob to portrait here, so the icon slot carries the wave number on an
+    -- accent disc: same 22x22 circular footprint as the mob strips, but clearly
+    -- a different kind of entry. Turns muted when the fingerprint drifts.
+    local icon = strip:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(22, 22)
+    icon:SetPoint("TOPLEFT", strip, "TOPLEFT", 3, -3)
+    icon:SetColorTexture(bandC[1], bandC[2], bandC[3], 1)
+    icon:SetMask("Interface\\Masks\\CircleMaskScalable")
+    strip.icon = icon
+
+    local badge = strip:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
+    badge:SetPoint("CENTER", icon, "CENTER", 0, 0)
+    badge:SetTextColor(1, 1, 1)
+    strip.badge = badge
+
+    local stripText = strip:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
+    stripText:SetPoint("RIGHT", strip, "RIGHT", -6, 0)
+    stripText:SetJustifyH("RIGHT")
+    stripText:SetWordWrap(false)
+    stripText:SetTextColor(1, 0.82, 0)
+    strip.text = stripText
+
+    -- Click-through, same as the mob strips (design: 波次注释 7.3).
+    strip:EnableMouse(false)
+    strip:Hide()
+    beaconFrame.pullNoteStrip = strip
+  end
+
   beaconFrame.noteStrips = {}
   for i = 1, NOTE_STRIP_MAX do
     local strip = CreateFrame("Frame", nil, beaconFrame)
     strip:SetSize(NOTE_STRIP_W, NOTE_STRIP_H)
+    -- Strip 1's anchor is re-set on every render (see renderNpcNotes): a hidden
+    -- frame still contributes its geometry, so permanently anchoring strip 1 to
+    -- the wave strip would leave a 32px gap whenever the wave note is absent.
     if i == 1 then
       strip:SetPoint("BOTTOMLEFT", beaconFrame, "TOPLEFT", 0, 6)
     else
@@ -520,9 +687,11 @@ local function create()
 
     local stripBg = strip:CreateTexture(nil, "BACKGROUND")
     stripBg:SetAllPoints()
-    stripBg:SetColorTexture(Theme.colors.panelBg[1], Theme.colors.panelBg[2], Theme.colors.panelBg[3], 0.6)
+    -- accent teal darkened + near-opaque: readable over any world backdrop.
+    -- The in-window plan band keeps the lighter @0.28 (it has panel bg behind it).
     strip._bgTexture = stripBg
     strip._borderTextures = Theme.CreateBorder(strip)
+    applyNoteStripChrome(strip)
 
     local icon = strip:CreateTexture(nil, "ARTWORK")
     icon:SetSize(22, 22)
@@ -531,23 +700,22 @@ local function create()
     strip.icon = icon
 
     local stripText = strip:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
-    stripText:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+    -- Icon pins to the left edge, note text to the right: a single RIGHT anchor
+    -- lets the text grow leftwards instead of being width-clamped between two
+    -- anchors, so a long note (or inline |T icons, which truncate counts as
+    -- zero-width atoms) never wraps out of the 28px strip.
     stripText:SetPoint("RIGHT", strip, "RIGHT", -6, 0)
-    stripText:SetJustifyH("LEFT")
+    stripText:SetJustifyH("RIGHT")
+    stripText:SetWordWrap(false)
     stripText:SetTextColor(1, 0.82, 0)
     strip.text = stripText
 
-    -- Hover shows the full untruncated note; the strip itself only carries the
-    -- single-line truncation (design: NpcNotes 5.3).
-    strip:EnableMouse(true)
-    strip:SetScript("OnEnter", function(self)
-      if not self.note then return end
-      GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-      GameTooltip:SetText(self.rawName or "", 1, 1, 1)
-      GameTooltip:AddLine("✎ " .. self.note, 1, 0.82, 0, true)
-      GameTooltip:Show()
-    end)
-    strip:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- Click-through: the strips are read-only info floating over the world, so
+    -- they must not swallow clicks. WoW hit-testing is rect-based (alpha is
+    -- irrelevant), so EnableMouse(false) is what makes the whole rect pass
+    -- through to whatever is below. No hover tooltip either — the full
+    -- untruncated note stays reachable via the mob's portrait tooltip.
+    strip:EnableMouse(false)
     strip:Hide()
     beaconFrame.noteStrips[i] = strip
   end
@@ -645,12 +813,7 @@ local function create()
 
   beaconFrame:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
-    local point, _, relativePoint, x, y = self:GetPoint()
-    local state = MDT_NPT:GetBeaconState()
-    state.anchorFrom = point
-    state.anchorTo = relativePoint
-    state.xoffset = x
-    state.yoffset = y
+    saveBeaconAnchor()
   end)
 
   beaconFrame:SetScript("OnMouseUp", function(self, button)
@@ -812,22 +975,12 @@ local function create()
 
   beaconFrame.resizeGrip = createResizeGrip(beaconFrame)
 
-  beaconFrame:SetScript("OnEnter", function(self)
-    self.completeBtn:SetAlpha(0.7)
-    self.skipBtn:SetAlpha(0.7)
-    self.revertBtn:SetAlpha(0.7)
-    self.planBtn:SetAlpha(0.7)
-    self.resizeGrip:SetAlpha(0.7)
+  beaconFrame:SetScript("OnEnter", function()
+    setControlsAlpha(0.7)
   end)
 
   beaconFrame:SetScript("OnLeave", function(self)
-    if not isMouseOver(self) then
-      self.completeBtn:SetAlpha(0)
-      self.skipBtn:SetAlpha(0)
-      self.revertBtn:SetAlpha(0)
-      self.planBtn:SetAlpha(0)
-      self.resizeGrip:SetAlpha(0)
-    end
+    if not isMouseOver(self) then setControlsAlpha(0) end
   end)
 
   beaconFrame:Hide()
@@ -865,6 +1018,7 @@ local function renderRouteComplete(frame, state, totalForcesMax)
   if frame.noteStrips then
     for i = 1, #frame.noteStrips do frame.noteStrips[i]:Hide() end
   end
+  if frame.pullNoteStrip then frame.pullNoteStrip:Hide() end
   for _, dot in ipairs(frame.dots) do dot:Hide() end
   Minimap.drawCurrentPullOutline(frame, nil)
 end
@@ -1169,13 +1323,53 @@ local function renderEnemiesPortraits(frame, pull, enemies)
 end
 
 ---Fills the note strips above the beacon for the current pull (design:
----NpcNotes 5.4). Called right after renderEnemiesPortraits with the same pull /
----enemies so wave switches refresh both together. When the toggle is off (or
----the db is not ready yet) all strips hide.
+---NpcNotes 5.4, 波次注释 7). Called right after renderEnemiesPortraits with the
+---same pull / enemies so wave switches refresh everything together. When the
+---toggle is off (or the db is not ready yet) all strips hide.
 local function renderNpcNotes(frame, pull, enemies)
   if not frame.noteStrips then return end
   local db = MDT_NPT:GetDB()
-  if not (db and db.beacon and db.beacon.showNpcNotes) then
+  local showNotes = (db and db.beacon and db.beacon.showNpcNotes) or false
+
+  -- Wave note first: it owns the slot nearest the beacon and mob strip 1
+  -- anchors to it, so its visibility has to be settled before re-anchoring.
+  local waveStrip = frame.pullNoteStrip
+  local waveShown = false
+  if waveStrip then
+    local uid, pullIndex = PullNotes.locate(MDT_NPT.state)
+    local text, matched
+    if showNotes and uid then
+      text, matched = PullNotes.get(uid, pullIndex, pull, enemies)
+    end
+    if text then
+      local muted = Theme.colors.textMuted
+      waveStrip.badge:SetText(tostring(pullIndex))
+      if matched then
+        local c = Theme.colors.accent
+        waveStrip.icon:SetColorTexture(c[1], c[2], c[3], 1)
+        waveStrip.text:SetTextColor(1, 0.82, 0)
+        waveStrip.text:SetText(NpcNotes.truncate(text, NOTE_STRIP_MAX_CHARS))
+      else
+        -- Drifted: a route edit moved this wave out from under the note. Flag it
+        -- rather than hide it — silently showing stale tactics mid-key is worse.
+        waveStrip.icon:SetColorTexture(muted[1], muted[2], muted[3], 1)
+        waveStrip.text:SetTextColor(muted[1], muted[2], muted[3], muted[4] or 1)
+        waveStrip.text:SetText("⚠ " .. NpcNotes.truncate(text, NOTE_STRIP_MAX_CHARS))
+      end
+      waveStrip:Show()
+      waveShown = true
+    else
+      waveStrip:Hide()
+    end
+  end
+
+  if frame.noteStrips[1] then
+    frame.noteStrips[1]:ClearAllPoints()
+    frame.noteStrips[1]:SetPoint("BOTTOMLEFT", waveShown and waveStrip or frame,
+      "TOPLEFT", 0, waveShown and 4 or 6)
+  end
+
+  if not showNotes then
     for i = 1, NOTE_STRIP_MAX do frame.noteStrips[i]:Hide() end
     return
   end
@@ -1187,12 +1381,8 @@ local function renderNpcNotes(frame, pull, enemies)
     if item then
       SetPortraitTextureFromCreatureDisplayID(strip.icon, item.displayId)
       strip.text:SetText(NpcNotes.truncate(item.note, NOTE_STRIP_MAX_CHARS))
-      strip.rawName = item.rawName
-      strip.note = item.note
       strip:Show()
     else
-      strip.rawName = nil
-      strip.note = nil
       strip:Hide()
     end
   end
@@ -1260,6 +1450,7 @@ local function applyLayoutMode(frame)
     if frame.noteStrips then
       for i = 1, #frame.noteStrips do frame.noteStrips[i]:Hide() end
     end
+    if frame.pullNoteStrip then frame.pullNoteStrip:Hide() end
   end
 
   frame:SetWidth(mapOnly and MAP_ONLY_W or FRAME_BASE_W)

@@ -9,6 +9,7 @@ local Wow = MDT_NPT.Wow
 local Theme = MDT_NPT.Theme
 local L = MDT_NPT.L
 local NpcNotes = MDT_NPT.NpcNotes
+local PullNotes = MDT_NPT.PullNotes
 
 local function copyPalette(src)
   local t = {}
@@ -64,6 +65,11 @@ local defaultSavedVars = {
     -- NpcNotes.keyFor ("npc:<id>" / "name:<name>"); values are raw strings
     -- that may contain WoW colour escapes. Account-wide by design.
     npcNotes = {},
+    -- Per-wave notes (design: 波次注释 3.1). Keyed [presetUID][pullIndex], value
+    -- { text, fingerprint }. Account-wide like npcNotes because MDT presets
+    -- themselves are account-wide: a route's tactics must not vanish on a
+    -- character switch. MUST stay under `global`, not `char`.
+    pullNotes = {},
     _migratedFromParent = false,
   },
   char = {
@@ -105,10 +111,12 @@ StaticPopupDialogs["NPT_BEACON_ASK"] = {
   preferredIndex = 3,
 }
 
--- Per-NPC note editor (design: NpcNotes 3.2). Shown via
--- StaticPopup_Show("MDT_NPT_NPC_NOTE", mobName, npcKey): text_arg1 is the mob
--- name (fills the "%s" in the title), text_arg2 is the NpcNotes key the
--- handlers read/write. Three buttons because ESC maps to button2 — a
+-- Note editor shared by both note kinds (design: NpcNotes 3.2, 波次注释 6.3).
+-- MDT_NPT.noteEdit carries the target:
+--   { kind = "npc",  key = "npc:<id>",          name = "<mob name>" }
+--   { kind = "pull", uid = "...", pullIndex = N, name = "<N>", pull = ..., enemies = ... }
+-- `kind` defaults to "npc", so the pre-existing call site and spec mocks keep
+-- working untouched. Three buttons because ESC maps to button2 — a
 -- save/clear-only pair would make "cancel" clear the note.
 -- 12.x StaticPopup renamed dialog fields (editBox -> EditBox, button1 ->
 -- Buttons[1]); keep both spellings so the handlers work across client versions.
@@ -117,6 +125,36 @@ local function popupEditBox(dialog)
 end
 local function popupAcceptButton(dialog)
   return dialog.button1 or (dialog.Buttons and dialog.Buttons[1])
+end
+
+---Title template for the pending target; both take a single "%s".
+local function popupTitle(pe)
+  if pe.kind == "pull" then return L["Pull Note - %s"] end
+  return L["NPC Note - %s"]
+end
+
+---Stored text for the pending target. The pull path omits pull/enemies, which
+---skips the fingerprint check — prefill wants the text, not a drift verdict.
+local function popupRead(pe)
+  if pe.kind == "pull" then return (PullNotes.get(pe.uid, pe.pullIndex)) end
+  return NpcNotes.get(pe.key)
+end
+
+---Writes the edited text back to the right store.
+local function popupWrite(pe, text)
+  if pe.kind == "pull" then
+    -- pull/enemies ride along in noteEdit so the save snapshots the wave the
+    -- user just confirmed. Omitting them would store a nil fingerprint, and nil
+    -- reads as "matched" — permanently disabling drift detection for this note.
+    return PullNotes.set(pe.uid, pe.pullIndex, text, pe.pull, pe.enemies)
+  end
+  return NpcNotes.set(pe.key, text)
+end
+
+---Clears whichever note the pending target points at.
+local function popupClear(pe)
+  if pe.kind == "pull" then return PullNotes.clear(pe.uid, pe.pullIndex) end
+  return NpcNotes.clear(pe.key)
 end
 
 StaticPopupDialogs["MDT_NPT_NPC_NOTE"] = {
@@ -130,16 +168,16 @@ StaticPopupDialogs["MDT_NPT_NPC_NOTE"] = {
   preferredIndex = 3,
   OnShow = function(self)
     -- 12.x StaticPopup_Show no longer forwards text_arg1/2 to the dialog, so
-    -- the click site stashes { key, name } in MDT_NPT.noteEdit instead.
+    -- the click site stashes the target in MDT_NPT.noteEdit instead.
     local pe = MDT_NPT.noteEdit
     if pe and self.Text then
-      self.Text:SetText((L["NPC Note - %s"]):format(pe.name or ""))
+      self.Text:SetText(popupTitle(pe):format(pe.name or ""))
     end
     -- The edit box shows the raw stored text (colour escapes render live),
     -- pre-selected so typing overwrites.
     local eb = popupEditBox(self)
     if eb then
-      eb:SetText(pe and NpcNotes.get(pe.key) or "")
+      eb:SetText((pe and popupRead(pe)) or "")
       eb:SetFocus()
       eb:HighlightText()
     end
@@ -160,14 +198,20 @@ StaticPopupDialogs["MDT_NPT_NPC_NOTE"] = {
     local pe = MDT_NPT.noteEdit
     if pe then
       local eb = popupEditBox(self)
-      NpcNotes.set(pe.key, eb and eb:GetText() or "")
+      -- 12.x edit boxes double typed/pasted pipes (text-editor escaping), so
+      -- reverse it on save; display surfaces need single-pipe escape sequences
+      local raw = eb and eb:GetText() or ""
+      raw = raw:gsub("||", "|")
+      -- MRT tactic-editor brace tokens ({spell:id}, class/marker names) become
+      -- native |T/|A markup so pasted tactic text shows its icons
+      popupWrite(pe, NpcNotes.mrtToNative(raw))
     end
     if Beacon.Update then Beacon:Update() end
   end,
   OnCancel = function() end, -- just close; ESC lands here
   OnAlt = function(self)
     local pe = MDT_NPT.noteEdit
-    if pe then NpcNotes.clear(pe.key) end
+    if pe then popupClear(pe) end
     if Beacon.Update then Beacon:Update() end
   end,
 }

@@ -135,6 +135,60 @@ function NpcNotes.collectForPull(pull, enemies)
 end
 
 ---------------------------------------------------------------------------
+-- MRT tactic-editor token conversion: {spell:id}, localised class names and
+-- raid-marker names become native WoW markup (|T / |A) so pasted tactic text
+-- renders its icons on every display surface. Unknown tokens stay literal.
+---------------------------------------------------------------------------
+
+local CLASS_ATLAS = {
+  ["战士"] = "warrior", ["warrior"] = "warrior",
+  ["圣骑士"] = "paladin", ["paladin"] = "paladin",
+  ["猎人"] = "hunter", ["hunter"] = "hunter",
+  ["潜行者"] = "rogue", ["rogue"] = "rogue",
+  ["牧师"] = "priest", ["priest"] = "priest",
+  ["死亡骑士"] = "deathknight", ["deathknight"] = "deathknight",
+  ["萨满祭司"] = "shaman", ["shaman"] = "shaman",
+  ["法师"] = "mage", ["mage"] = "mage",
+  ["术士"] = "warlock", ["warlock"] = "warlock",
+  ["武僧"] = "monk", ["monk"] = "monk",
+  ["德鲁伊"] = "druid", ["druid"] = "druid",
+  ["恶魔猎手"] = "demonhunter", ["demonhunter"] = "demonhunter",
+  ["唤魔师"] = "evoker", ["evoker"] = "evoker",
+}
+
+local MARKER_INDEX = {
+  ["星星"] = 1, ["star"] = 1,
+  ["圈圈"] = 2, ["circle"] = 2,
+  ["菱形"] = 3, ["diamond"] = 3,
+  ["三角"] = 4, ["triangle"] = 4,
+  ["月亮"] = 5, ["moon"] = 5,
+  ["方块"] = 6, ["square"] = 6,
+  ["十字"] = 7, ["cross"] = 7,
+  ["骷髅"] = 8, ["skull"] = 8,
+}
+
+---Translates MRT brace tokens to native escape markup; leaves everything else
+---(including unknown tokens) untouched so nothing is silently lost.
+function NpcNotes.mrtToNative(text)
+  if type(text) ~= "string" or text == "" then return text or "" end
+  text = text:gsub("{spell:(%d+)}", function(id)
+    if not (C_Spell and C_Spell.GetSpellTexture) then return "{spell:" .. id .. "}" end
+    local ok, tex = pcall(C_Spell.GetSpellTexture, tonumber(id))
+    if ok and tex then return "|T" .. tex .. ":16|t" end
+    return "{spell:" .. id .. "}"
+  end)
+  text = text:gsub("{([^{}]+)}", function(name)
+    local cls = CLASS_ATLAS[name]
+    if cls then return "|A:classicon-" .. cls .. ":16:16|a" end
+    local mk = MARKER_INDEX[name]
+    if mk then return "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_" .. mk .. ":16|t" end
+    return "{" .. name .. "}"
+  end)
+  return text
+end
+
+
+---------------------------------------------------------------------------
 -- Escape-aware truncation (note-strip single-line display)
 ---------------------------------------------------------------------------
 

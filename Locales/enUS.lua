@@ -80,6 +80,7 @@ L["Potion Not Specified"] = "Not Specified"
 -- NPC notes (design: NpcNotes 8)
 L["Show Notes"] = "Show Notes"
 L["NPC Note - %s"] = "Note for %s"
+L["Pull Note - %s"] = "Note for pull %s"
 L["Save Note"] = "Save"
 L["Clear Note"] = "Clear"
-L["Show a note strip above the beacon for annotated mobs in the current pull."] = "Show a note strip above the beacon for annotated mobs in the current pull."
+L["Show note strips above the beacon for the current pull and its annotated mobs."] = "Show note strips above the beacon for the current pull and its annotated mobs."

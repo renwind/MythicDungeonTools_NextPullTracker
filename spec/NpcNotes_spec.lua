@@ -295,6 +295,30 @@ describe("NpcNotes — truncate (escape-aware)", function()
   end)
 end)
 
+describe("NpcNotes — mrtToNative", function()
+  local NpcNotes
+
+  before_each(function()
+    mocks.reset()
+    _G.C_Spell = { GetSpellTexture = function(id) return 1000 + id end }
+    mocks.loadSource("Modules/NpcNotes.lua")
+    NpcNotes = _G.MDT_NPT.NpcNotes
+  end)
+
+  it("converts {spell:id} to native texture markup", function()
+    assert.equals("|T1010964:16|t", NpcNotes.mrtToNative("{spell:109964}"))
+  end)
+
+  it("converts class and raid-marker tokens", function()
+    assert.equals("|A:classicon-shaman:16:16|a", NpcNotes.mrtToNative("{萨满祭司}"))
+    assert.equals("|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_4:16|t", NpcNotes.mrtToNative("{三角}"))
+  end)
+
+  it("leaves unknown tokens and plain text untouched", function()
+    assert.equals("{未知}abc", NpcNotes.mrtToNative("{未知}abc"))
+  end)
+end)
+
 describe("Core.lua — MDT_NPT_NPC_NOTE popup", function()
   local NpcNotes
   local mockDb
@@ -325,6 +349,7 @@ describe("Core.lua — MDT_NPT_NPC_NOTE popup", function()
       autoStartInKey = false,
       beacon = { enabled = true, showForNonTank = false, askOnStart = true },
       npcNotes = {},
+      pullNotes = {},
     }
     _G.LibStub = function()
       return { New = function() return { global = mockDb, char = { beacon = {} } } end }
@@ -349,9 +374,10 @@ describe("Core.lua — MDT_NPT_NPC_NOTE popup", function()
 
     _G.print = function() end
 
-    -- Load the real NpcNotes module first so Core.lua captures it as an upvalue.
+    -- Load the real note modules first so Core.lua captures them as upvalues.
     mocks.loadSource("Modules/NpcNotes.lua")
     NpcNotes = _G.MDT_NPT.NpcNotes
+    mocks.loadSource("Modules/PullNotes.lua")
 
     local chunk = assert(loadfile("Core.lua"))
     chunk("MythicDungeonTools_NextPullTracker")
@@ -414,5 +440,62 @@ describe("Core.lua — MDT_NPT_NPC_NOTE popup", function()
     _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnAlt(dialog)
     assert.is_nil(mockDb.npcNotes["npc:184122"])
     assert.equals(1, beaconUpdates)
+  end)
+
+  -- A noteEdit without `kind` must keep behaving exactly as before the per-wave
+  -- note feature landed: every pre-existing call site and mock omits the field.
+  it("treats a missing kind as an npc note (back-compat)", function()
+    mockDb.npcNotes["npc:184122"] = "怪物注释"
+    _G.MDT_NPT.noteEdit = { key = "npc:184122", name = "虚空织网者" }
+    editBox = makeEditBox()
+    local dialog = { editBox = editBox }
+    _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnShow(dialog)
+    assert.equals("怪物注释", editBox.text)
+  end)
+
+  it("kind=pull OnShow prefills from PullNotes, not NpcNotes", function()
+    mockDb.pullNotes["u1"] = { [3] = { text = "波次注释", fingerprint = nil } }
+    mockDb.npcNotes["u1"] = "must not be read"
+    _G.MDT_NPT.noteEdit = { kind = "pull", uid = "u1", pullIndex = 3, name = "3" }
+    editBox = makeEditBox()
+    local dialog = { editBox = editBox }
+    _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnShow(dialog)
+    assert.equals("波次注释", editBox.text)
+  end)
+
+  it("kind=pull OnAccept writes to PullNotes and leaves NpcNotes alone", function()
+    _G.MDT_NPT.noteEdit = { kind = "pull", uid = "u1", pullIndex = 3, name = "3" }
+    editBox = makeEditBox()
+    editBox:SetText("先集火左边")
+    local dialog = { editBox = editBox }
+    _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnAccept(dialog)
+    assert.equals("先集火左边", mockDb.pullNotes["u1"][3].text)
+    assert.is_nil(mockDb.npcNotes["u1"])
+    assert.equals(1, beaconUpdates)
+  end)
+
+  -- The important one: noteEdit carries pull/enemies precisely so the save can
+  -- snapshot the wave. A nil fingerprint reads as "matched" forever, which would
+  -- silently disable drift detection for every note edited through the popup.
+  it("kind=pull OnAccept snapshots the fingerprint from noteEdit's pull", function()
+    _G.MDT_NPT.noteEdit = {
+      kind = "pull", uid = "u1", pullIndex = 3, name = "3",
+      pull = { [7] = { 1 } }, enemies = { [7] = { id = 101 } },
+    }
+    editBox = makeEditBox()
+    editBox:SetText("x")
+    local dialog = { editBox = editBox }
+    _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnAccept(dialog)
+    assert.equals("7:1", mockDb.pullNotes["u1"][3].fingerprint)
+  end)
+
+  it("kind=pull OnAlt clears the wave note only", function()
+    mockDb.pullNotes["u1"] = { [3] = { text = "old" } }
+    mockDb.npcNotes["npc:1"] = "keep me"
+    _G.MDT_NPT.noteEdit = { kind = "pull", uid = "u1", pullIndex = 3, name = "3" }
+    local dialog = { editBox = makeEditBox() }
+    _G.StaticPopupDialogs["MDT_NPT_NPC_NOTE"].OnAlt(dialog)
+    assert.is_nil(mockDb.pullNotes["u1"][3])
+    assert.equals("keep me", mockDb.npcNotes["npc:1"])
   end)
 end)

@@ -108,7 +108,7 @@ local function buildPanel()
     refreshBeacon, false)
 
   makeBeaconBool(category, "MDTNPT_BEACON_NOTES", L["Show Notes"],
-    "showNpcNotes", L["Show a note strip above the beacon for annotated mobs in the current pull."],
+    "showNpcNotes", L["Show note strips above the beacon for the current pull and its annotated mobs."],
     refreshBeacon, false)
 
   makeBeaconBool(category, "MDTNPT_BEACON_NONTANK", L["Show for non-tanks"],
