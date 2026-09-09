@@ -650,7 +650,10 @@ local function create()
     local icon = strip:CreateTexture(nil, "ARTWORK")
     icon:SetSize(22, 22)
     icon:SetPoint("TOPLEFT", strip, "TOPLEFT", 3, -3)
-    icon:SetColorTexture(bandC[1], bandC[2], bandC[3], 1)
+    -- Initial disc colour only: renderNpcNotes re-applies accent (matched) or the
+    -- muted grey (drifted) on every render, so this is just the pre-render value.
+    local discC = Theme.colors.accent
+    icon:SetColorTexture(discC[1], discC[2], discC[3], 1)
     icon:SetMask("Interface\\Masks\\CircleMaskScalable")
     strip.icon = icon
 
