@@ -165,7 +165,8 @@ describe("PullNotes — drift detection", function()
 
   before_each(function()
     mocks.reset()
-    function _G.MDT_NPT:GetDB() return { pullNotes = {} } end
+    local mockDb = { pullNotes = {} }
+    function _G.MDT_NPT:GetDB() return mockDb end
     mocks.loadSource("Modules/PullNotes.lua")
     PullNotes = _G.MDT_NPT.PullNotes
   end)

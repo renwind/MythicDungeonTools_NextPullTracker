@@ -306,7 +306,7 @@ describe("NpcNotes — mrtToNative", function()
   end)
 
   it("converts {spell:id} to native texture markup", function()
-    assert.equals("|T1010964:16|t", NpcNotes.mrtToNative("{spell:109964}"))
+    assert.equals("|T1010964:16|t", NpcNotes.mrtToNative("{spell:1009964}"))
   end)
 
   it("converts class and raid-marker tokens", function()
