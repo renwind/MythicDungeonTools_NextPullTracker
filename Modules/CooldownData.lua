@@ -146,6 +146,47 @@ local function getPullPlan(dbChar, uid, pullIndex)
 end
 CooldownData.getPullPlan = getPullPlan
 
+-- 当前波和历史波共用匹配规则；只读检查，避免清洗历史存档。
+local function matchesSeed(entry, seedEntry, dbChar)
+  if type(entry) ~= "table" or entry.kind ~= seedEntry.kind or type(entry.id) ~= "number"
+    or (entry.action ~= "use" and entry.action ~= "save") then
+    return false
+  end
+  if seedEntry.kind == "item" then
+    return dbChar ~= nil and entry.id == dbChar.cooldownPotionID
+  end
+  local seedID = seedEntry.id
+  if type(seedID) == "table" then
+    for _, id in ipairs(seedID) do
+      if entry.id == id then return true end
+    end
+    return false
+  end
+  return entry.id == seedID
+end
+
+local function findPlanEntry(plan, seedEntry, dbChar)
+  if type(plan) ~= "table" or type(plan.entries) ~= "table" then return nil end
+  for _, entry in ipairs(plan.entries) do
+    if matchesSeed(entry, seedEntry, dbChar) then return entry end
+  end
+end
+
+-- 只累计当前路线中截至当前波的计划使用次数，每波最多一次；不读取冷却、不缓存或写回。
+local function getUseOrdinal(dbChar, uid, pullIndex, seedEntry)
+  if type(pullIndex) ~= "number" or pullIndex < 1 or pullIndex % 1 ~= 0 then return nil end
+  local byUID = dbChar and dbChar.cooldownPlans and dbChar.cooldownPlans[uid]
+  if type(byUID) ~= "table" then return nil end
+  local count = 0
+  for index, plan in pairs(byUID) do
+    if type(index) == "number" and index >= 1 and index % 1 == 0 and index <= pullIndex then
+      local entry = findPlanEntry(plan, seedEntry, dbChar)
+      if entry and entry.action == "use" then count = count + 1 end
+    end
+  end
+  return count
+end
+
 -- Build the runtime active entries for a pull: seed x stored plan (design 5.7).
 local function getActiveEntries(dbChar, uid, pullIndex)
   local seed = getSeedEntries()
@@ -153,22 +194,12 @@ local function getActiveEntries(dbChar, uid, pullIndex)
   local plan = getPullPlan(dbChar, uid, pullIndex)
   local result = {}
   for _, seedEntry in ipairs(seed) do
-    local planEntry
-    if plan and plan.entries then
-      for _, e in ipairs(plan.entries) do
-        local seedID = seedEntry.id
-        local match = false
-        if type(seedID) == "table" then
-          for _, sid in ipairs(seedID) do
-            if e.id == sid then match = true break end
-          end
-        else
-          match = (e.id == seedID) or (seedEntry.kind == "item" and e.id == dbChar.cooldownPotionID)
-        end
-        if match then planEntry = e break end
-      end
+    local planEntry = findPlanEntry(plan, seedEntry, dbChar)
+    local useOrdinal
+    if planEntry and planEntry.action == "use" then
+      useOrdinal = getUseOrdinal(dbChar, uid, pullIndex, seedEntry)
     end
-    result[#result + 1] = { seed = seedEntry, plan = planEntry }
+    result[#result + 1] = { seed = seedEntry, plan = planEntry, useOrdinal = useOrdinal }
   end
   return result
 end

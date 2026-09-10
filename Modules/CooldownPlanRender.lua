@@ -98,6 +98,18 @@ local function resolveEntry(entry, dbChar)
   end
 end
 
+-- 隐藏和复用都清空文字，避免旧序号留在非 use、预览或提前返回的控件上。
+local function clearOrdinal(cell)
+  if cell.ordinalText then
+    cell.ordinalText:SetText("")
+    cell.ordinalText:Hide()
+  end
+end
+
+local function clearRowOrdinals(row)
+  for _, cell in ipairs(row.cells or {}) do clearOrdinal(cell) end
+end
+
 local function ensureCells(row, count, size)
   row.cells = row.cells or {}
   for i = 1, count do
@@ -123,6 +135,11 @@ local function ensureCells(row, count, size)
       cell.badge:SetPoint("CENTER", cell, "CENTER", 0, 0)
       cell.badge:SetSize(math.floor(size * 0.8), math.floor(size * 0.8))
       cell.badge:Hide()
+      cell.ordinalText = cell.badgeFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.large)
+      cell.ordinalText:SetPoint("CENTER", cell, "CENTER", 0, 0)
+      cell.ordinalText:SetShadowColor(unpack(Theme.colors.shadow))
+      cell.ordinalText:SetShadowOffset(1, -1)
+      cell.ordinalText:Hide()
       cell.label = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.cdText)
       cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -1)  -- CD countdown under the icon
       cell.label:SetShadowColor(unpack(Theme.colors.shadow))
@@ -135,6 +152,7 @@ local function ensureCells(row, count, size)
   end
   -- hide extras
   for i = count + 1, #row.cells do
+    clearOrdinal(row.cells[i])
     row.cells[i]:Hide()
   end
 end
@@ -342,8 +360,17 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
     cell.icon:SetAlpha(entry.plan and 1 or 0.5)
     cell.planUse = not not (entry.plan and entry.plan.action == "use")
     cell.glowAllowed = showCD and true or false  -- highlight rings the current-pull row only
+    clearOrdinal(cell)
+    local showOrdinal = showCD and cell.planUse and entry.useOrdinal
+    if showOrdinal then
+      cell.ordinalText:SetText(tostring(entry.useOrdinal))
+      cell.ordinalText:SetTextColor(unpack(COLOR_USE))
+      cell.ordinalText:Show()
+    end
     if cell.badge then
-      if entry.plan then
+      if showOrdinal then
+        cell.badge:Hide()
+      elseif entry.plan then
         cell.badge:SetTexture(entry.plan.action == "use" and BADGE_USE or BADGE_SAVE)
         cell.badge:Show()
       else
@@ -473,6 +500,7 @@ function Render:Render(frame, state, preset, nextPull)
   if not active then
     for _, r in ipairs({ showRow, nextRow }) do
       if r then
+        clearRowOrdinals(r)
         r:Hide()
         if r.cells then
           for _, c in ipairs(r.cells) do c:Hide() end
@@ -488,6 +516,8 @@ function Render:Render(frame, state, preset, nextPull)
   local uid = CooldownData.getPlanKey(state)
   local pullIndex = state and state.currentNextPull
   if not uid or not pullIndex then
+    clearRowOrdinals(showRow)
+    clearRowOrdinals(nextRow)
     showRow:Hide(); nextRow:Hide()
     if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Hide(showRow) end
     hideDispels(showRow)
@@ -518,6 +548,7 @@ function Render:Render(frame, state, preset, nextPull)
     nextRow:Show()
     fillRow(nextRow, nextEntries, dbChar, false, NEXT_ICON_SIZE, false, nil, ICON_SIZE)
   else
+    clearRowOrdinals(nextRow)
     nextRow:Hide()
   end
 end

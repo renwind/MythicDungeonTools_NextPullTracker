@@ -208,9 +208,9 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
   local uid = self.uid
   local pullIndex = self.selectedPull
   self.cellArea.cells = self.cellArea.cells or {}
-  local seed = CooldownData.getSeedEntries()
-  local plan = uid and CooldownPlan:Get(uid, pullIndex) or nil
-  for i, seedEntry in ipairs(seed) do
+  local entries = CooldownData.getActiveEntries(dbChar, uid, pullIndex)
+  for i, entry in ipairs(entries) do
+    local seedEntry = entry.seed
     local cell = self.cellArea.cells[i]
     if not cell then
       cell = CreateFrame("Button", nil, self.cellArea)
@@ -220,6 +220,10 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
       cell.edges = Theme.CreateBorder(cell)
       cell.label = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
       cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -2)
+      cell.ordinalText = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.large)
+      cell.ordinalText:SetPoint("CENTER", cell, "CENTER", 0, 0)
+      cell.ordinalText:SetShadowColor(unpack(Theme.colors.shadow))
+      cell.ordinalText:SetShadowOffset(1, -1)
       cell:SetScript("OnClick", function(c, button)
         self:OnCellClick(c, button)
       end)
@@ -233,15 +237,14 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
       icon = C_Item.GetItemIconByID((dbChar and dbChar.cooldownPotionID) or seedEntry.defaultItemID)
     end
     cell.icon:SetTexture(icon or "Interface\\ICONS\\INV_Misc_QuestionMark")
-    -- current action
-    local action
-    if plan and plan.entries then
-      for _, e in ipairs(plan.entries) do
-        local sid = seedEntry.id
-        local match = (type(sid) == "table") and (function() for _, s in ipairs(sid) do if e.id == s then return true end end return false end)()
-          or (e.id == sid) or (seedEntry.kind == "item" and e.id == (dbChar and dbChar.cooldownPotionID))
-        if match then action = e.action break end
-      end
+    -- 与当前波渲染共用派生结果，不再单独匹配计划或累计序号。
+    local action = entry.plan and entry.plan.action
+    cell.ordinalText:SetText("")
+    cell.ordinalText:Hide()
+    if action == "use" and entry.useOrdinal then
+      cell.ordinalText:SetText(tostring(entry.useOrdinal))
+      cell.ordinalText:SetTextColor(unpack(Theme.colors.cdUse))
+      cell.ordinalText:Show()
     end
     cell.action = action
     cell.label:SetText(action == "use" and (MDT_NPT.L["Use"] or "Use") or (action == "save" and (MDT_NPT.L["Save"] or "Save") or ""))
@@ -250,6 +253,15 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
     cell:ClearAllPoints()
     cell:SetPoint("TOPLEFT", self.cellArea, "TOPLEFT", (i - 1) * (CELL_SIZE + 8), 0)
     cell:Show()
+  end
+  -- 专精切换后旧控件仍会复用，隐藏时同步清空显示和交互状态。
+  for i = #entries + 1, #self.cellArea.cells do
+    local cell = self.cellArea.cells[i]
+    cell.ordinalText:SetText("")
+    cell.ordinalText:Hide()
+    cell.label:SetText("")
+    cell.action, cell.seedEntry = nil, nil
+    cell:Hide()
   end
 end
 
