@@ -184,14 +184,15 @@ if (-not $isAdmin) {
 # ---------------------------------------------------------------
 $xdArgs = @()
 foreach ($d in $ExcludeDirs) {
-    $full = Join-Path $RepoRoot $d
-    if (Test-Path -LiteralPath $full) { $xdArgs += $full }
+    # 不做存在性判断：deploy\ 是下面第 4 步才创建的，若按「存在才排除」过滤，
+    # 第 5 步 /MIR 会把刚生成的备份镜像进游戏目录（且逐次部署累积膨胀）。
+    # robocopy /XD 对不存在的路径是空操作，全量传入才安全。
+    $xdArgs += (Join-Path $RepoRoot $d)
 }
 
 $xfArgs = @()
 foreach ($f in $ExcludeFiles) {
-    $full = Join-Path $RepoRoot $f
-    if (Test-Path -LiteralPath $full) { $xfArgs += $full }
+    $xfArgs += (Join-Path $RepoRoot $f)
 }
 
 Write-Step "排除目录: $(if ($xdArgs) { $xdArgs -join ' | ' } else { '(无)' })"
