@@ -18,6 +18,7 @@ local SEED_TABLE = {
       name     = "Ascendance",
       icon     = nil, -- resolved at runtime
       baseCD   = 180,
+      allowUses = true, -- per-pull use count (1-3) settable via editor wheel (design 2026-09-12)
     },
     {
       id       = nil, -- filled at runtime from dbChar.cooldownPotionID
@@ -27,6 +28,17 @@ local SEED_TABLE = {
       baseCD   = nil, -- potion CD comes from shared use-effect spell 1236616 (300s)
       defaultItemID = 241308,      -- Light's Potential (ilvl 295); out-of-the-box (design 6/Q1)
       useEffectSpellID = 1236616,  -- stable key for CD/icon across the 4 itemIDs (design 8.2/Q2)
+    },
+    {
+      -- Bloodlust family; same ID list as CooldownLust.BLOODLUST_SPELLS (keep in sync).
+      -- hideCD: the raw spell CD contradicts the sated-aware lustFrame monitor, so the
+      -- plan cell carries no sweep/countdown/glow — planning annotation only (2026-09-12).
+      id       = { 2825, 32182, 80353, 264667, 390386 },
+      kind     = "spell",
+      name     = "Bloodlust",
+      icon     = nil,
+      baseCD   = 300,
+      hideCD   = true,
     },
   },
 }
@@ -120,6 +132,16 @@ local function sanitizePlanEntry(entry)
       entry[key] = nil; fixed = true
     end
   end
+  -- uses (per-pull count, design 2026-09-12): non-number drops with the warn like the
+  -- schema fields; out-of-range/non-integer clamps silently (only hand-edited SV can produce it).
+  if entry.uses ~= nil then
+    if type(entry.uses) ~= "number" then
+      entry.uses = nil; fixed = true
+    else
+      local clamped = math.min(3, math.max(1, math.floor(entry.uses)))
+      if clamped ~= entry.uses then entry.uses = clamped end
+    end
+  end
   if fixed and not cooldownPlanCorruptionWarned then
     cooldownPlanCorruptionWarned = true
     print("|cff00ff00[MDT]|r Cooldown plan entry had invalid fields; removed.")
@@ -172,19 +194,28 @@ local function findPlanEntry(plan, seedEntry, dbChar)
   end
 end
 
--- 只累计当前路线中截至当前波的计划使用次数，每波最多一次；不读取冷却、不缓存或写回。
+-- Per-pull use count of a plan entry; absent/invalid reads as 1 (design 2026-09-12).
+local function entryUses(entry)
+  local uses = entry and entry.uses
+  if type(uses) == "number" and uses >= 1 then return math.floor(uses) end
+  return 1
+end
+CooldownData.entryUses = entryUses
+
+-- 累计当前路线中截至当前波的计划使用次数：先前各波 entry.uses 之和 + 1
+-- （= 本波第一次是第几次；全 1 存档与旧“每波 +1”公式逐值相等）；不读取冷却、不缓存或写回。
 local function getUseOrdinal(dbChar, uid, pullIndex, seedEntry)
   if type(pullIndex) ~= "number" or pullIndex < 1 or pullIndex % 1 ~= 0 then return nil end
   local byUID = dbChar and dbChar.cooldownPlans and dbChar.cooldownPlans[uid]
   if type(byUID) ~= "table" then return nil end
-  local count = 0
+  local before = 0
   for index, plan in pairs(byUID) do
-    if type(index) == "number" and index >= 1 and index % 1 == 0 and index <= pullIndex then
+    if type(index) == "number" and index >= 1 and index % 1 == 0 and index < pullIndex then
       local entry = findPlanEntry(plan, seedEntry, dbChar)
-      if entry and entry.action == "use" then count = count + 1 end
+      if entry and entry.action == "use" then before = before + entryUses(entry) end
     end
   end
-  return count
+  return before + 1
 end
 
 -- Build the runtime active entries for a pull: seed x stored plan (design 5.7).

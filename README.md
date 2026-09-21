@@ -19,6 +19,7 @@ Requires Mythic Dungeon Tools to be installed and enabled.
 - Click-through panel: blank space never blocks clicks — hold **Alt** to drag or right-click the Beacon
 - Per-NPC notes: middle-click a portrait to annotate a mob type, shown on the portrait tooltip and as note strips above the Beacon
 - Per-wave notes: middle-click the map to annotate the pull itself — the note rides the strip closest to the Beacon and flags itself if a route edit shifts it onto a different wave
+- Cooldown plan: per-pull use/save plans for Ascendance, burst potion and Bloodlust (its cell is planning-only — no CD sweep; the left-end monitor owns live readiness) with route-wide use ordinals; mouse-wheel the Ascendance cell in the editor to set uses per pull (1-3), shown as an ×N badge in the icon's top-right corner while the ordinal sits bottom-left
 - Auto-start when a Mythic+ key begins, auto-stop when it ends
 - One-shot migration of existing Next Pull settings from the parent MDT addon
 - Retail (Midnight / 12.0) support

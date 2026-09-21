@@ -42,6 +42,24 @@ function CooldownPlan:SetEntry(uid, pullIndex, id, kind, action)
   return true
 end
 
+-- Set (or clear) one entry's per-pull use count (design 2026-09-12).
+-- uses nil or <2 removes the field (absent reads as 1). Missing entry -> false, no entry created.
+function CooldownPlan:SetUses(uid, pullIndex, id, uses)
+  local plan = CooldownData.getPullPlan(dbChar(), uid, pullIndex)
+  if not plan or not plan.entries or not id then return false end
+  for _, e in ipairs(plan.entries) do
+    if e.id == id then
+      if type(uses) == "number" and uses >= 2 then
+        e.uses = math.min(3, math.floor(uses))
+      else
+        e.uses = nil
+      end
+      return true
+    end
+  end
+  return false
+end
+
 -- Remove one entry by id.
 function CooldownPlan:ClearEntry(uid, pullIndex, id)
   local plan = CooldownData.getPullPlan(dbChar(), uid, pullIndex)

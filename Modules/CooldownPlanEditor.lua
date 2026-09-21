@@ -4,6 +4,30 @@ local CooldownData = MDT_NPT.CooldownData
 local CooldownPlan = MDT_NPT.CooldownPlan
 local Theme = MDT_NPT.Theme
 
+-- 统计次数读作角落 chrome 而非决策色（与 CooldownPlanRender 同值）
+local COLOR_ORDINAL = { 0.85, 0.85, 0.85 }
+
+-- 统计次数样式：比主题字号小 4 + 描边；描边走 font flags，客户端没有 SetOutlined。
+-- 与 CooldownPlanRender.applyOrdinalStyle 同逻辑（两处建格各自持有）。
+local function applyOrdinalStyle(fs)
+  local file, size, flags = fs:GetFont()
+  if not file then return end
+  if not (flags or ""):find("OUTLINE", 1, true) then
+    flags = ((flags or "") == "") and "OUTLINE" or (flags .. ",OUTLINE")
+  end
+  fs:SetFont(file, size - 4, flags)
+end
+
+-- ×N 角标样式：粗描边（读作加粗），字号保持主题 large；颜色在显示时取 accent 跟主题。
+local function applyUsesStyle(fs)
+  local file, size, flags = fs:GetFont()
+  if not file then return end
+  if not (flags or ""):find("OUTLINE", 1, true) then
+    flags = ((flags or "") == "") and "THICKOUTLINE" or (flags .. ",THICKOUTLINE")
+  end
+  fs:SetFont(file, size, flags)
+end
+
 -- CooldownPlanEditor: standalone edit panel (wave list + per-wave use/save cells).
 -- Opened via /npt plan and Beacon right-click. Design 7.
 MDTNPTCooldownPlanMixin = {}
@@ -221,11 +245,32 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
       cell.label = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
       cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -2)
       cell.ordinalText = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.large)
-      cell.ordinalText:SetPoint("CENTER", cell, "CENTER", 0, 0)
+      cell.ordinalText:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 1, 1)
       cell.ordinalText:SetShadowColor(unpack(Theme.colors.shadow))
       cell.ordinalText:SetShadowOffset(1, -1)
+      applyOrdinalStyle(cell.ordinalText)
+      cell.usesText = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.large)
+      cell.usesText:SetPoint("TOPRIGHT", cell, "TOPRIGHT", -1, -1)
+      applyUsesStyle(cell.usesText)
+      cell.usesText:Hide()
       cell:SetScript("OnClick", function(c, button)
         self:OnCellClick(c, button)
+      end)
+      cell:SetScript("OnMouseWheel", function(c, delta)
+        self:OnCellWheel(c, delta)
+      end)
+      cell:SetScript("OnEnter", function(c)
+        local se = c.seedEntry
+        if not se or not se.allowUses then return end
+        GameTooltip:SetOwner(c, "ANCHOR_RIGHT")
+        GameTooltip:SetText(se.name or "")
+        local hint = MDT_NPT.L["Wheel: uses this pull (1-3)"] or "Wheel: uses this pull (1-3)"
+        if c.uses and c.uses >= 2 then hint = hint .. "  ×" .. c.uses end
+        GameTooltip:AddLine(hint, 1, 1, 1, true)
+        GameTooltip:Show()
+      end)
+      cell:SetScript("OnLeave", function()
+        GameTooltip:Hide()
       end)
       self.cellArea.cells[i] = cell
     end
@@ -243,15 +288,27 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
     cell.ordinalText:Hide()
     if action == "use" and entry.useOrdinal then
       cell.ordinalText:SetText(tostring(entry.useOrdinal))
-      cell.ordinalText:SetTextColor(unpack(Theme.colors.cdUse))
+      cell.ordinalText:SetTextColor(unpack(COLOR_ORDINAL))
       cell.ordinalText:Show()
+    end
+    local uses = (action == "use" and entry.plan and entry.plan.uses) or nil
+    cell.uses = uses
+    if uses and uses >= 2 then
+      cell.usesText:SetText("×" .. uses)
+      cell.usesText:SetTextColor(unpack(Theme.colors.accent))
+      cell.usesText:Show()
+    else
+      cell.usesText:SetText("")
+      cell.usesText:Hide()
     end
     cell.action = action
     cell.label:SetText(action == "use" and (MDT_NPT.L["Use"] or "Use") or (action == "save" and (MDT_NPT.L["Save"] or "Save") or ""))
     local lc = (action == "use") and Theme.colors.cdUse or ((action == "save") and Theme.colors.cdSave or Theme.colors.textMuted)
     cell.label:SetTextColor(lc[1], lc[2], lc[3], lc[4])
     cell:ClearAllPoints()
-    cell:SetPoint("TOPLEFT", self.cellArea, "TOPLEFT", (i - 1) * (CELL_SIZE + 8), 0)
+    -- mirror the render row's right-aligned stack so seed 3 (Bloodlust) sits
+    -- left of the potion in BOTH views (design 2026-09-12 增补)
+    cell:SetPoint("TOPRIGHT", self.cellArea, "TOPRIGHT", -((i - 1) * (CELL_SIZE + 8)), 0)
     cell:Show()
   end
   -- 专精切换后旧控件仍会复用，隐藏时同步清空显示和交互状态。
@@ -259,10 +316,21 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
     local cell = self.cellArea.cells[i]
     cell.ordinalText:SetText("")
     cell.ordinalText:Hide()
+    cell.usesText:SetText("")
+    cell.usesText:Hide()
     cell.label:SetText("")
-    cell.action, cell.seedEntry = nil, nil
+    cell.action, cell.seedEntry, cell.uses = nil, nil, nil
     cell:Hide()
   end
+end
+
+-- Shared seed->id resolution for the click/wheel writers (spell dual ID takes the first).
+local function cellSeedID(seedEntry)
+  if seedEntry.kind == "spell" then
+    return type(seedEntry.id) == "table" and seedEntry.id[1] or seedEntry.id
+  end
+  local dc = MDT_NPT:GetDBChar()
+  return (dc and dc.cooldownPotionID) or seedEntry.defaultItemID
 end
 
 -- Click toggles use<->save; Ctrl+click on potion cell opens drag mode (design 7.2/8.2).
@@ -277,8 +345,7 @@ function MDTNPTCooldownPlanMixin:OnCellClick(cell, button)
   local uid = self.uid
   local pullIndex = self.selectedPull
   if not uid or not pullIndex then return end
-  local id = seedEntry.kind == "spell" and (type(seedEntry.id) == "table" and seedEntry.id[1] or seedEntry.id)
-    or (MDT_NPT:GetDBChar() and MDT_NPT:GetDBChar().cooldownPotionID) or seedEntry.defaultItemID
+  local id = cellSeedID(seedEntry)
   local nextAction = (cell.action == "use") and "save" or "use"
   CooldownPlan:SetEntry(uid, pullIndex, id, seedEntry.kind, nextAction)
   -- store fingerprint at plan-build time (design 5.5)
@@ -291,6 +358,23 @@ function MDTNPTCooldownPlanMixin:OnCellClick(cell, button)
   end
   self:RebuildCells()
   -- refresh the beacon icon rows immediately (no need to toggle showCooldownPlan)
+  if MDT_NPT.Beacon and MDT_NPT.Beacon.Update then MDT_NPT.Beacon:Update() end
+end
+
+-- Wheel adjusts the per-pull use count on allowUses seeds (design 2026-09-12);
+-- ignored unless the cell is in use state, so stray scrolls never create entries.
+function MDTNPTCooldownPlanMixin:OnCellWheel(cell, delta)
+  local seedEntry = cell.seedEntry
+  if not seedEntry or not seedEntry.allowUses then return end
+  if cell.action ~= "use" then return end
+  local cur = cell.uses or 1
+  local nxt = math.min(3, math.max(1, cur + (delta > 0 and 1 or -1)))
+  if nxt == cur then return end  -- clamped at the 1/3 ends: nothing to store
+  local uid = self.uid
+  local pullIndex = self.selectedPull
+  if not uid or not pullIndex then return end
+  CooldownPlan:SetUses(uid, pullIndex, cellSeedID(seedEntry), nxt)
+  self:RebuildCells()
   if MDT_NPT.Beacon and MDT_NPT.Beacon.Update then MDT_NPT.Beacon:Update() end
 end
 

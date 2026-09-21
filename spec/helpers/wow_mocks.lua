@@ -128,6 +128,8 @@ function M.withCooldownRuntime(fn)
     end
     function w:GetText() return self.text end
     function w:SetTextColor(...) self.color = { ... } end
+    function w:GetFont() return self._fontPath or "Fonts\\dummy.ttf", self._fontSize or 12, self._fontFlags or "" end
+    function w:SetFont(path, size, flags) self._fontPath, self._fontSize, self._fontFlags = path, size, flags end
     function w:SetShadowColor(...) self.shadowColor = { ... } end
     function w:SetShadowOffset(...) self.shadowOffset = { ... } end
     function w:SetColorTexture(...) self.color = { ... } end

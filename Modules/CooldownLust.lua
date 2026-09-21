@@ -43,6 +43,7 @@ local function createIconBorder(cell)
 end
 
 -- Bloodlust-family buffs (first known wins). Reference: GearInsight LiveGuide LUST_BUFFS.
+-- Keep in sync with the Bloodlust seed id list in CooldownData.SEED_TABLE (2026-09-12).
 local BLOODLUST_SPELLS = { 2825, 32182, 80353, 264667, 390386 }  -- 嗜血/英勇/时间扭曲/原始狂怒/飞龙振翅
 -- Sated-family debuffs (筋疲力尽/心满意足/时空错位/疲惫). Reference: GearInsight SATED.
 local SATED = { 57724, 57723, 80354, 264689 }

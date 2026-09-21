@@ -80,10 +80,10 @@ describe("CooldownPlanRender 真实渲染序号", function()
       number(frame.cooldownIconsRow.cells[2], 2)
       assert.equals(cell.badgeFrame, cell.ordinalText:GetParent())
       assert.is_true(cell.ordinalText:GetParent():GetFrameLevel() > cell.cd:GetFrameLevel())
-      assert.equals("CENTER", cell.ordinalText.points[1][1])
+      assert.equals("BOTTOMLEFT", cell.ordinalText.points[1][1])
       assert.equals("OVERLAY", cell.ordinalText.layer)
       assert.equals(MDT_NPT.Theme.fonts.large, cell.ordinalText.font)
-      assert.same(MDT_NPT.Theme.colors.cdUse, cell.ordinalText.color)
+      assert.same({ 0.85, 0.85, 0.85 }, cell.ordinalText.color)
       assert.not_equals(cell.label, cell.ordinalText)
     end)
   end)
@@ -116,9 +116,9 @@ describe("CooldownPlanRender 真实渲染序号", function()
       render()
       local cells = frame.upcomingIconsRow.cells
       assert.equals(4, MDT_NPT.CooldownData.getActiveEntries(env.dbChar, "a", 8)[1].useOrdinal)
-      for _, cell in ipairs(cells) do
+      for i, cell in ipairs(cells) do
         emptyNumber(cell)
-        assert.is_true(cell.badge:IsShown())
+        if i <= 2 then assert.is_true(cell.badge:IsShown()) end  -- cell 3 = unplanned Bloodlust: no badge
         for _, text in ipairs(cell.ordinalText.textHistory) do assert.equals("", text) end
       end
       assert.equals("Interface\\RaidFrame\\ReadyCheck-Ready", cells[1].badge.texture)
@@ -127,6 +127,19 @@ describe("CooldownPlanRender 真实渲染序号", function()
       cells[1].ordinalText:Show()
       render()
       emptyNumber(cells[1])
+    end)
+  end)
+
+  it("嗜血格纯规划标注：无冷却扫过无倒计时无就绪辉光", function()
+    scenario(function(env, frame, store, render)
+      store:SetEntry("a", 7, 2825, "spell", "use")
+      render()
+      local cell = frame.cooldownIconsRow.cells[3]
+      assert.is_true(cell.planUse)
+      assert.is_false(cell.cd:IsShown())
+      assert.equals("", cell.label:GetText())
+      assert.is_false(cell.glowOn or false)
+      number(cell, 1)  -- 序号照常驻：嗜血第 N 次开
     end)
   end)
 
@@ -242,7 +255,7 @@ describe("CooldownPlanRender 真实渲染序号", function()
       local cell = frame.cooldownIconsRow.cells[1]
       number(cell, 3)
       assert.same(MDT_NPT.Theme.colors.cdMismatch, cell.label.color)
-      assert.same(MDT_NPT.Theme.colors.cdUse, cell.ordinalText.color)
+      assert.same({ 0.85, 0.85, 0.85 }, cell.ordinalText.color)
     end)
   end)
 

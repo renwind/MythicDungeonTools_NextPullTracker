@@ -53,6 +53,8 @@ local COLOR_SAVE     = Theme.colors.cdSave
 local COLOR_CONFLICT = Theme.colors.cdConflict
 local COLOR_MISMATCH = Theme.colors.cdMismatch
 local COLOR_EMPTY    = Theme.colors.cdEmpty
+-- 统计次数读作角落 chrome 而非决策色：灰白 + 描边 + 比主题字号小 2
+local COLOR_ORDINAL  = { 0.85, 0.85, 0.85 }
 
 -- Center overlay badges: green check = use, red cross = save (blizz ready-check art).
 local BADGE_USE  = "Interface\\RaidFrame\\ReadyCheck-Ready"
@@ -65,8 +67,9 @@ local function borderColorFor(entry, mismatch)
   if mismatch then return COLOR_MISMATCH end
   if not entry.plan then return COLOR_EMPTY end
   if entry.plan.action == "use" then
-    -- conflict: marked use but still on CD
-    local cdID = (entry.seed.kind == "item") and entry.seed.useEffectSpellID or entry.resolved
+    -- conflict: marked use but still on CD (hideCD seeds never conflict: no authoritative CD here)
+    local cdID = (entry.seed.kind == "item") and entry.seed.useEffectSpellID
+      or (entry.seed.hideCD and nil or entry.resolved)
     if cdID then
       if isLongCD(C_Spell.GetSpellCooldown(cdID)) then
         return COLOR_CONFLICT
@@ -88,7 +91,8 @@ local function resolveEntry(entry, dbChar)
       id = CooldownData.resolveAscendanceID(id)
     end
     entry.resolved = id
-    return id, C_Spell.GetSpellTexture(id), (seed.kind == "item") and seed.useEffectSpellID or id
+    -- hideCD seeds return no CD key: no sweep/countdown/glow on their cells
+    return id, C_Spell.GetSpellTexture(id), seed.hideCD and nil or id
   else
     -- item: icon from itemID; CD/icon from shared use-effect spell
     local itemID = (dbChar and dbChar.cooldownPotionID) or seed.defaultItemID
@@ -98,12 +102,37 @@ local function resolveEntry(entry, dbChar)
   end
 end
 
--- 隐藏和复用都清空文字，避免旧序号留在非 use、预览或提前返回的控件上。
+-- 隐藏和复用都清空文字，避免旧序号/×N 角标留在非 use、预览或提前返回的控件上。
 local function clearOrdinal(cell)
   if cell.ordinalText then
     cell.ordinalText:SetText("")
     cell.ordinalText:Hide()
   end
+  if cell.usesText then
+    cell.usesText:SetText("")
+    cell.usesText:Hide()
+  end
+end
+
+-- 统计次数样式：左下角、比主题字号小 4、描边（创建期一次设定）。
+-- 描边走 font flags：客户端没有 FontString:SetOutlined（12.x 实测 nil）。
+local function applyOrdinalStyle(fs)
+  local file, size, flags = fs:GetFont()
+  if not file then return end
+  if not (flags or ""):find("OUTLINE", 1, true) then
+    flags = ((flags or "") == "") and "OUTLINE" or (flags .. ",OUTLINE")
+  end
+  fs:SetFont(file, size - 4, flags)
+end
+
+-- ×N 角标样式：粗描边（读作加粗），字号保持主题 large；颜色在显示时取 accent 跟主题。
+local function applyUsesStyle(fs)
+  local file, size, flags = fs:GetFont()
+  if not file then return end
+  if not (flags or ""):find("OUTLINE", 1, true) then
+    flags = ((flags or "") == "") and "THICKOUTLINE" or (flags .. ",THICKOUTLINE")
+  end
+  fs:SetFont(file, size, flags)
 end
 
 local function clearRowOrdinals(row)
@@ -136,10 +165,19 @@ local function ensureCells(row, count, size)
       cell.badge:SetSize(math.floor(size * 0.8), math.floor(size * 0.8))
       cell.badge:Hide()
       cell.ordinalText = cell.badgeFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.large)
-      cell.ordinalText:SetPoint("CENTER", cell, "CENTER", 0, 0)
+      cell.ordinalText:SetPoint("BOTTOMLEFT", cell, "BOTTOMLEFT", 1, 1)
       cell.ordinalText:SetShadowColor(unpack(Theme.colors.shadow))
       cell.ordinalText:SetShadowOffset(1, -1)
+      applyOrdinalStyle(cell.ordinalText)
       cell.ordinalText:Hide()
+      -- ×N per-pull uses badge rides the badgeFrame like the ordinal (above the CD swipe);
+      -- top-right at the ordinal's original (large) size
+      cell.usesText = cell.badgeFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.large)
+      cell.usesText:SetPoint("TOPRIGHT", cell, "TOPRIGHT", -1, -1)
+      applyUsesStyle(cell.usesText)
+      cell.usesText:SetShadowColor(unpack(Theme.colors.shadow))
+      cell.usesText:SetShadowOffset(1, -1)
+      cell.usesText:Hide()
       cell.label = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.cdText)
       cell.label:SetPoint("TOP", cell, "BOTTOM", 0, -1)  -- CD countdown under the icon
       cell.label:SetShadowColor(unpack(Theme.colors.shadow))
@@ -311,7 +349,9 @@ local function startCDTicker(cell, getCDID)
     if not cdID then
       cell.cd:Clear()
       if cell.label then cell.label:SetText("") end
-      setCellGlow(cell, cell.glowAllowed and cell.planUse)
+      -- nil CD only happens for hideCD seeds: no ready glow either, the
+      -- sated-aware lustFrame owns live Bloodlust readiness
+      setCellGlow(cell, false)
       return
     end
     local info = C_Spell.GetSpellCooldown(cdID)
@@ -364,8 +404,14 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
     local showOrdinal = showCD and cell.planUse and entry.useOrdinal
     if showOrdinal then
       cell.ordinalText:SetText(tostring(entry.useOrdinal))
-      cell.ordinalText:SetTextColor(unpack(COLOR_USE))
+      cell.ordinalText:SetTextColor(unpack(COLOR_ORDINAL))
       cell.ordinalText:Show()
+    end
+    local uses = cell.planUse and entry.plan.uses or nil
+    if uses and uses >= 2 then
+      cell.usesText:SetText("×" .. uses)
+      cell.usesText:SetTextColor(unpack(Theme.colors.accent))
+      cell.usesText:Show()
     end
     if cell.badge then
       if showOrdinal then
@@ -394,7 +440,7 @@ local function fillRow(row, entries, dbChar, mismatch, size, showCD, pullIdx, pa
         cell.label:Show()
       end
       local onCDNow = isLongCD(info)
-      setCellGlow(cell, cell.glowAllowed and cell.planUse and not onCDNow)
+      setCellGlow(cell, cdID and cell.glowAllowed and cell.planUse and not onCDNow)
     else
       cell.cd:Clear()
       cell.cd:Hide()

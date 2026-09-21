@@ -62,6 +62,20 @@ describe("CooldownData 计划使用序号", function()
     end)
   end)
 
+  it("嗜血 seed 族内任一 ID 归一且标记 hideCD", function()
+    scenario(function(env, data)
+      local seed = data.getSeedEntries()[3]
+      assert.equals("spell", seed.kind)
+      assert.equals(5, #seed.id)
+      assert.is_true(seed.hideCD)
+      local stored = spell("use", 32182)
+      env.dbChar.cooldownPlans.a = { [2] = plan(stored) }
+      local entry = data.getActiveEntries(env.dbChar, "a", 2)[3]
+      assert.equals(stored, entry.plan)
+      assert.equals(1, entry.useOrdinal)
+    end)
+  end)
+
   it("同一波重复 ID 和别名最多贡献一次", function()
     scenario(function(env, data)
       env.dbChar.cooldownPlans.a = {
@@ -215,5 +229,76 @@ describe("CooldownData 计划使用序号", function()
     end)
     assert.is_false(ok)
     assert.equals(previous, _G.CreateFrame)
+  end)
+end)
+
+describe("CooldownData 单波使用次数", function()
+  before_each(function() mocks.reset() end)
+
+  local function spellUses(action, uses, id)
+    local e = spell(action, id)
+    e.uses = uses
+    return e
+  end
+
+  it("uses 累计进后续波序号且本波显示首序", function()
+    scenario(function(env, data)
+      env.dbChar.cooldownPlans.a = {
+        [2] = plan(spellUses("use", 2)), [5] = plan(spell()), [9] = plan(spell()),
+      }
+      assert.equals(1, data.getActiveEntries(env.dbChar, "a", 2)[1].useOrdinal)
+      assert.equals(3, data.getActiveEntries(env.dbChar, "a", 5)[1].useOrdinal)
+      assert.equals(4, data.getActiveEntries(env.dbChar, "a", 9)[1].useOrdinal)
+    end)
+  end)
+
+  it("全 1 存档与旧每波加一公式逐值相等", function()
+    scenario(function(env, data)
+      env.dbChar.cooldownPlans.a = { [2] = plan(spell()), [5] = plan(spell()), [9] = plan(spell()) }
+      for _, row in ipairs({ { 2, 1 }, { 5, 2 }, { 9, 3 } }) do
+        assert.equals(row[2], data.getActiveEntries(env.dbChar, "a", row[1])[1].useOrdinal)
+      end
+    end)
+  end)
+
+  it("sanitize 钳制越界与非整数且丢弃非数字但保留条目", function()
+    scenario(function(env, data)
+      local plans = {
+        [1] = plan(spellUses("use", 4)), [2] = plan(spellUses("use", 0)),
+        [3] = plan(spellUses("use", 2.7)), [4] = plan(spellUses("use", "x")),
+      }
+      env.dbChar.cooldownPlans.a = plans
+      data.getActiveEntries(env.dbChar, "a", 4)  -- sanitize runs inside getPullPlan
+      assert.equals(3, plans[1].entries[1].uses)
+      assert.equals(1, plans[2].entries[1].uses)
+      assert.equals(2, plans[3].entries[1].uses)
+      assert.is_nil(plans[4].entries[1].uses)
+      assert.equals("use", plans[4].entries[1].action)
+    end)
+  end)
+
+  it("派生条目携带 uses 供渲染角标", function()
+    scenario(function(env, data)
+      env.dbChar.cooldownPlans.a = { [2] = plan(spellUses("use", 3)) }
+      local entry = data.getActiveEntries(env.dbChar, "a", 2)[1]
+      assert.equals(3, entry.plan.uses)
+    end)
+  end)
+
+  it("SetUses 设置钳制清除且缺条目不建", function()
+    scenario(function(env, data, store)
+      store:SetEntry("a", 3, 114050, "spell", "use")
+      store:SetEntry("a", 5, 114050, "spell", "use")
+      assert.is_true(store:SetUses("a", 3, 114050, 2))
+      assert.equals(2, env.dbChar.cooldownPlans.a[3].entries[1].uses)
+      assert.equals(3, data.getActiveEntries(env.dbChar, "a", 5)[1].useOrdinal)
+      store:SetUses("a", 3, 114050, 9)
+      assert.equals(3, env.dbChar.cooldownPlans.a[3].entries[1].uses)
+      store:SetUses("a", 3, 114050, 1)
+      assert.is_nil(env.dbChar.cooldownPlans.a[3].entries[1].uses)
+      assert.is_false(store:SetUses("a", 3, 999, 2))
+      assert.is_false(store:SetUses("a", 8, 114050, 2))
+      assert.is_nil(env.dbChar.cooldownPlans.a[8])
+    end)
   end)
 end)
