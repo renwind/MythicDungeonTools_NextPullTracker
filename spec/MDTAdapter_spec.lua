@@ -124,4 +124,43 @@ describe("MDTAdapter.lua", function()
     assert.equals("nalorakk-route", adapter:GetCurrentPreset(161).uid)
     assert.equals(160, db.currentDungeonIdx)
   end)
+
+  it("maps registered zones onto their dungeon", function()
+    local adapter = loadAdapter({ L = {} })
+    adapter:RegisterDungeonLocation(153, { zoneIds = { 2424, 2511 }, subzoneAreaIDs = { 16814 } })
+
+    assert.equals(153, adapter.zoneIdToDungeonIdx[2424])
+    assert.equals(153, adapter.zoneIdToDungeonIdx[2511])
+  end)
+
+  it("keeps the first dungeon registered for a zone two dungeons share", function()
+    local adapter = loadAdapter({ L = {} })
+    adapter:RegisterDungeonLocation(161, { zoneIds = { 2437, 2513 } })
+    adapter:RegisterDungeonLocation(157, { zoneIds = { 2437, 2501 } })
+
+    assert.equals(161, adapter.zoneIdToDungeonIdx[2437])
+    assert.equals(157, adapter.zoneIdToDungeonIdx[2501])
+  end)
+
+  -- MDT's Midnight data files are loaded into this namespace by the TOC and
+  -- call RegisterDungeonLocation before registering enemy data. A missing
+  -- method aborts the file, leaving dungeonEnemies empty so pull tracking
+  -- reports "no pulls in current preset".
+  it("lets an MDT dungeon data file finish loading in this namespace", function()
+    local namespace = { L = {} }
+    loadAdapter(namespace)
+
+    local dataFile = assert((loadstring or load)([[
+      local _, MDT = ...
+      local dungeonIndex = 153
+      MDT:RegisterDungeonLocation(dungeonIndex, { zoneIds = { 2424 } })
+      MDT.dungeonTotalCount[dungeonIndex] = { normal = 585 }
+      MDT.dungeonEnemies[dungeonIndex] = { [1] = { name = "Arcane Magister", count = 7 } }
+    ]], "=midnightFixture"))
+    dataFile("MythicDungeonTools", namespace)
+
+    assert.equals(585, namespace.dungeonTotalCount[153].normal)
+    assert.equals(7, namespace.dungeonEnemies[153][1].count)
+    assert.equals(153, namespace.zoneIdToDungeonIdx[2424])
+  end)
 end)

@@ -29,6 +29,22 @@ if localeMeta.__index == nil then
   setmetatable(Adapter.L, localeMeta)
 end
 
+-- MDT 6.2.17 made every Midnight dungeon file call this before it registers
+-- dungeonEnemies/dungeonTotalCount. MDT defines it in its load-on-demand UI
+-- addon, which is not loaded when our TOC cross-loads those files, so the
+-- adapter has to answer it or each file aborts mid-load.
+function Adapter:RegisterDungeonLocation(dungeonIdx, location)
+  local zoneIds = location and location.zoneIds
+  if not zoneIds then return end
+  for _, zoneId in ipairs(zoneIds) do
+    -- Two dungeons can share an overworld zone and this addon has none of
+    -- MDT's dungeon-selection ordering to break the tie, so first wins.
+    if Adapter.zoneIdToDungeonIdx[zoneId] == nil then
+      Adapter.zoneIdToDungeonIdx[zoneId] = dungeonIdx
+    end
+  end
+end
+
 function Adapter:GetDB()
   -- MDT's core API captures its small bootstrap DB before the load-on-demand
   -- UI initializes AceDB. Once the UI is loaded, MythicDungeonToolsDB.global
