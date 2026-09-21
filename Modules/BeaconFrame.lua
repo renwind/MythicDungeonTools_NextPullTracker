@@ -83,10 +83,11 @@ local FRAME_BASE_W, FRAME_BASE_H = 418, 216  -- wider minimap viewport (208) + 1
                                              -- height = minimap 208 + 4px margins so the map fills the left column exactly
 local SCALE_MIN, SCALE_MAX = 0.5, 2.0
 local NOTE_STRIP_MAX = 8          -- note strips mirror the portrait slot count (design: NpcNotes 5.2)
-local NOTE_STRIP_W = FRAME_BASE_W -- strips span the full beacon width so their edges line up with it
-local NOTE_STRIP_H = 28
-local NOTE_STRIP_MAX_CHARS = 26   -- visible glyphs fitting the ~383px text area at 10pt CJK (~13px each),
-                                  -- held under 29 to leave room for inline |T icons (design: NpcNotes 2.6)
+local NOTE_STRIP_W = FRAME_BASE_W - 4  -- left edge flush with the map viewport (inset 4), right edge at window right
+local NOTE_STRIP_H = 32
+local NOTE_STRIP_ICON = 24          -- trimmed from the 27.5 (1.25x) trial on user feedback; text stays 1.5x
+local NOTE_STRIP_MAX_CHARS = 17   -- visible glyphs fitting the ~383px text area at 15pt CJK (~19.5px each),
+                                  -- held under 19 to leave room for inline |T icons (design: NpcNotes 2.6)
 -- Strips float directly over the game world with no panel behind them, so they
 -- cannot reuse the in-window plan band's light accent @0.28: a bright backdrop
 -- bled through and washed out the gold note text. Darken the accent and make it
@@ -101,7 +102,23 @@ local function applyNoteStripChrome(strip)
   local bandC = Theme.colors.accent
   strip._bgTexture:SetColorTexture(bandC[1] * NOTE_STRIP_BG_DIM, bandC[2] * NOTE_STRIP_BG_DIM,
     bandC[3] * NOTE_STRIP_BG_DIM, NOTE_STRIP_BG_ALPHA)
+  -- circular accent ring behind the icon disc (map-border hue, theme-following)
+  if strip._iconRing then
+    strip._iconRing:SetVertexColor(bandC[1], bandC[2], bandC[3], 1)
+  end
   Theme.UpdateBorder(strip._borderTextures)
+end
+
+-- 条内文字/徽标按倍数放大主题字号（2026-09-12 用户要求 1.5 倍）。
+local function scaleStripFont(fs, mult)
+  local file, size, flags = fs:GetFont()
+  if file then fs:SetFont(file, size * mult, flags) end
+end
+
+-- 存档注释的内联图标烘为 16px（mrtToNative），1.5x 文字需要 24px 同伴；
+-- 显示期重写使老存档跟随，tooltip 仍用存档的 16px（配其更大字号正好）。
+local function scaleInlineIcons(text)
+  return (text:gsub(":16|t", ":24|t"):gsub(":16:16|a", ":24:24|a"))
 end
 
 -- The old global MouseIsOver helper is no longer available in WoW 12.1.
@@ -636,20 +653,27 @@ local function create()
   do
     local strip = CreateFrame("Frame", nil, beaconFrame)
     strip:SetSize(NOTE_STRIP_W, NOTE_STRIP_H)
-    strip:SetPoint("BOTTOMLEFT", beaconFrame, "TOPLEFT", 0, 6)
+    strip:SetPoint("BOTTOMLEFT", beaconFrame, "TOPLEFT", 4, 6)
 
     local stripBg = strip:CreateTexture(nil, "BACKGROUND")
     stripBg:SetAllPoints()
     strip._bgTexture = stripBg
     strip._borderTextures = Theme.CreateBorder(strip)
+    -- 1px accent ring: a slightly larger white circle behind the icon disc,
+    -- tinted by applyNoteStripChrome (created before it so the first paint is themed)
+    local ring = strip:CreateTexture(nil, "ARTWORK")
+    ring:SetSize(NOTE_STRIP_ICON + 2, NOTE_STRIP_ICON + 2)
+    ring:SetPoint("LEFT", strip, "LEFT", 3, 0)
+    ring:SetTexture(Theme.textures.circleWhite)
+    strip._iconRing = ring
     applyNoteStripChrome(strip)
 
     -- No mob to portrait here, so the icon slot carries the wave number on an
-    -- accent disc: same 22x22 circular footprint as the mob strips, but clearly
+    -- accent disc: same circular footprint as the mob strips, but clearly
     -- a different kind of entry. Turns muted when the fingerprint drifts.
     local icon = strip:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(22, 22)
-    icon:SetPoint("TOPLEFT", strip, "TOPLEFT", 3, -3)
+    icon:SetSize(NOTE_STRIP_ICON, NOTE_STRIP_ICON)
+    icon:SetPoint("LEFT", strip, "LEFT", 4, 0)
     -- Initial disc colour only: renderNpcNotes re-applies accent (matched) or the
     -- muted grey (drifted) on every render, so this is just the pre-render value.
     local discC = Theme.colors.accent
@@ -660,6 +684,7 @@ local function create()
     local badge = strip:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
     badge:SetPoint("CENTER", icon, "CENTER", 0, 0)
     badge:SetTextColor(1, 1, 1)
+    scaleStripFont(badge, 1.5)
     strip.badge = badge
 
     local stripText = strip:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
@@ -667,6 +692,7 @@ local function create()
     stripText:SetJustifyH("RIGHT")
     stripText:SetWordWrap(false)
     stripText:SetTextColor(1, 0.82, 0)
+    scaleStripFont(stripText, 1.5)
     strip.text = stripText
 
     -- Click-through, same as the mob strips (design: 波次注释 7.3).
@@ -681,9 +707,9 @@ local function create()
     strip:SetSize(NOTE_STRIP_W, NOTE_STRIP_H)
     -- Strip 1's anchor is re-set on every render (see renderNpcNotes): a hidden
     -- frame still contributes its geometry, so permanently anchoring strip 1 to
-    -- the wave strip would leave a 32px gap whenever the wave note is absent.
+    -- the wave strip would leave a 36px gap whenever the wave note is absent.
     if i == 1 then
-      strip:SetPoint("BOTTOMLEFT", beaconFrame, "TOPLEFT", 0, 6)
+      strip:SetPoint("BOTTOMLEFT", beaconFrame, "TOPLEFT", 4, 6)
     else
       strip:SetPoint("BOTTOMLEFT", beaconFrame.noteStrips[i - 1], "TOPLEFT", 0, 4)
     end
@@ -694,11 +720,16 @@ local function create()
     -- The in-window plan band keeps the lighter @0.28 (it has panel bg behind it).
     strip._bgTexture = stripBg
     strip._borderTextures = Theme.CreateBorder(strip)
+    local ring = strip:CreateTexture(nil, "ARTWORK")
+    ring:SetSize(NOTE_STRIP_ICON + 2, NOTE_STRIP_ICON + 2)
+    ring:SetPoint("LEFT", strip, "LEFT", 3, 0)
+    ring:SetTexture(Theme.textures.circleWhite)
+    strip._iconRing = ring
     applyNoteStripChrome(strip)
 
     local icon = strip:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(22, 22)
-    icon:SetPoint("TOPLEFT", strip, "TOPLEFT", 3, -3)
+    icon:SetSize(NOTE_STRIP_ICON, NOTE_STRIP_ICON)
+    icon:SetPoint("LEFT", strip, "LEFT", 4, 0)
     icon:SetMask("Interface\\Masks\\CircleMaskScalable")
     strip.icon = icon
 
@@ -706,11 +737,12 @@ local function create()
     -- Icon pins to the left edge, note text to the right: a single RIGHT anchor
     -- lets the text grow leftwards instead of being width-clamped between two
     -- anchors, so a long note (or inline |T icons, which truncate counts as
-    -- zero-width atoms) never wraps out of the 28px strip.
+    -- zero-width atoms) never wraps out of the strip.
     stripText:SetPoint("RIGHT", strip, "RIGHT", -6, 0)
     stripText:SetJustifyH("RIGHT")
     stripText:SetWordWrap(false)
     stripText:SetTextColor(1, 0.82, 0)
+    scaleStripFont(stripText, 1.5)
     strip.text = stripText
 
     -- Click-through: the strips are read-only info floating over the world, so
@@ -1351,13 +1383,13 @@ local function renderNpcNotes(frame, pull, enemies)
         local c = Theme.colors.accent
         waveStrip.icon:SetColorTexture(c[1], c[2], c[3], 1)
         waveStrip.text:SetTextColor(1, 0.82, 0)
-        waveStrip.text:SetText(NpcNotes.truncate(text, NOTE_STRIP_MAX_CHARS))
+        waveStrip.text:SetText(scaleInlineIcons(NpcNotes.truncate(text, NOTE_STRIP_MAX_CHARS)))
       else
         -- Drifted: a route edit moved this wave out from under the note. Flag it
         -- rather than hide it — silently showing stale tactics mid-key is worse.
         waveStrip.icon:SetColorTexture(muted[1], muted[2], muted[3], 1)
         waveStrip.text:SetTextColor(muted[1], muted[2], muted[3], muted[4] or 1)
-        waveStrip.text:SetText("⚠ " .. NpcNotes.truncate(text, NOTE_STRIP_MAX_CHARS))
+        waveStrip.text:SetText(scaleInlineIcons("⚠ " .. NpcNotes.truncate(text, NOTE_STRIP_MAX_CHARS)))
       end
       waveStrip:Show()
       waveShown = true
@@ -1369,7 +1401,7 @@ local function renderNpcNotes(frame, pull, enemies)
   if frame.noteStrips[1] then
     frame.noteStrips[1]:ClearAllPoints()
     frame.noteStrips[1]:SetPoint("BOTTOMLEFT", waveShown and waveStrip or frame,
-      "TOPLEFT", 0, waveShown and 4 or 6)
+      "TOPLEFT", waveShown and 0 or 4, waveShown and 4 or 6)
   end
 
   if not showNotes then
@@ -1383,7 +1415,7 @@ local function renderNpcNotes(frame, pull, enemies)
     local item = items[i]
     if item then
       SetPortraitTextureFromCreatureDisplayID(strip.icon, item.displayId)
-      strip.text:SetText(NpcNotes.truncate(item.note, NOTE_STRIP_MAX_CHARS))
+      strip.text:SetText(scaleInlineIcons(NpcNotes.truncate(item.note, NOTE_STRIP_MAX_CHARS)))
       strip:Show()
     else
       strip:Hide()
