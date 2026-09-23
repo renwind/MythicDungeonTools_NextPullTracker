@@ -12,6 +12,36 @@
 
 ---
 
+## 已知既有失败基线（不要修，与本功能无关）
+
+在 `6b5c157`（本功能开工前的 main）上，本地 fengari 跑 `spec/CooldownData_spec.lua`
+与 `spec/CooldownPlanRender_spec.lua` 已经是 **32 passed / 3 failed**。已用「替换回
+baseline 版 wow_mocks 再跑」验证过：失败集合与本功能的改动无关，且是确定性的、
+与 Lua 版本无关（不是 fengari 假象）。
+
+三个失败：
+
+1. `CooldownData 单波使用次数 / sanitize 钳制越界与非整数且丢弃非数字但保留条目`
+   —— expected 3, got 4
+2. `CooldownPlanRender 真实渲染序号 / 基线真实入口维持当前与预览尺寸和独立倒计时`
+   —— expected 2, got 3
+3. `CooldownPlanRender 真实渲染序号 / 嗜血格纯规划标注：无冷却扫过无倒计时无就绪辉光`
+   —— expected false, got true
+
+第 1 个的根因已定位：`spec/CooldownData_spec.lua:264-278` 调
+`getActiveEntries(dbChar, "a", 4)` 后断言 pull 1/2/3 的 `uses` 被钳制，但
+`getPullPlan`（`Modules/CooldownData.lua:154-169`）只清洗**被请求的那一波**；
+`getUseOrdinal` 走早先波次时只调 `findPlanEntry` + `entryUses`，都不写回钳制值。
+所以 `plans[1].entries[1].uses` 恒为 4。
+
+**决定（用户 2026-09-23）**：这三个失败留给 `renwind`（它们来自其 2026-09-21 的
+`ee6b01a` / `0acb93d`），本计划不修。判断「测试写错了」还是「产品代码回归了」
+需要原作者的意图，尤其第 3 个看起来像 `hideCD` 的真实回归。
+
+**因此本计划的验收标准是「不新增失败」，不是「全绿」。**
+Task 8 Step 5 的全量回归，预期结果就是这 3 个失败依旧、且只有这 3 个。
+任何实现者看到这 3 个失败都**不要**去修，也**不要**报 BLOCKED。
+
 ## 测试命令
 
 - 本地单个 spec：`node .tmp-npt-task/luaenv/minibusted.js spec/CooldownAlert_spec.lua`
