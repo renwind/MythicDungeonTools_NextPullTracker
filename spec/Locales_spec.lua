@@ -47,16 +47,20 @@ describe("本地化完整性", function()
 
   it("设置面板与斜杠命令的文案两种语言都齐", function()
     mocks.withCooldownRuntime(function()
-      local keys = {
-        "Alerts", "Voice Alert", "Center Text Alert", "No Planned Uses - %d",
-        "Speak the next pull's planned cooldowns when the wave advances.",
-        "Show the same reminder as large text in the middle of the screen.",
-        "Repeat the next pull's cooldown reminder now",
+      local expected = {
+        ["Alerts"] = "冷却提醒",
+        ["Voice Alert"] = "语音提醒",
+        ["Center Text Alert"] = "屏幕中部文字",
+        ["No Planned Uses - %d"] = "第 %d 波没有规划要开的冷却",
+        ["Speak the next pull's planned cooldowns when the wave advances."] = "波次推进时，语音念出下一波计划要开的爆发技能。",
+        ["Show the same reminder as large text in the middle of the screen."] = "在屏幕中部用大字显示同一条提醒。",
       }
       local en = loadRealLocale("enUS")
-      for _, key in ipairs(keys) do assert.is_not_nil(en[key]) end
+      for key in pairs(expected) do assert.is_not_nil(en[key]) end
+      -- 叠了 enUS 基底的表里，漏译会静默回落成英文，所以必须比对中文字面值本身；
+      -- 光断言 not_nil 抓不到「enUS 加了、zhCN 忘了」。测试 2 同理。
       local zh = loadRealLocale("zhCN")
-      for _, key in ipairs(keys) do assert.is_not_nil(zh[key]) end
+      for key, value in pairs(expected) do assert.equals(value, zh[key]) end
     end)
   end)
 end)
