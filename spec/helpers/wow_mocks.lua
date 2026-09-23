@@ -109,7 +109,7 @@ function M.withCooldownRuntime(fn)
     ttsVoices = { { voiceID = 7, name = "Test Voice" } },
     tts = { voiceOptionID = 7, rate = 0, volume = 80 },
   }
-  -- 手动触发所有未取消的 After 定时器；去抖断言全靠它，不依赖真实时间。
+  -- 手动触发所有未取消的 After / NewTimer 定时器；去抖断言全靠它，不依赖真实时间。
   function env.fireTimers()
     local due = env.timers
     env.timers = {}
