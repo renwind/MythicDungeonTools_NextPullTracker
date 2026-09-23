@@ -70,4 +70,73 @@ function CooldownAlert.buildText(dbChar, uid, pullIndex)
   return table.concat(parts, L["Alert List Joiner"])
 end
 
+-- 去抖延迟（秒）。中途开局时 Start 会先为 pull 1 排定一次播报，约 1 秒后第一次
+-- 力量值轮询把已清完的波次一次性吃掉、再排定一次；没有去抖就会连播两条，
+-- 而第一条已经过期（设计 §5.2）。这不是优化，是正确性要求。
+local ANNOUNCE_DELAY = 0.75
+
+local lastKey
+local pending
+
+local function cancelPending()
+  if pending and pending.Cancel then pending:Cancel() end
+  pending = nil
+end
+
+---读开关并输出。去抖定时器与 SpeakNow 共用这一份实现，两条入口不会走偏。
+---开关在**播出时**读取，而不是排定时——用户在 0.75 秒窗口内关掉语音应当立刻生效。
+---@return string|nil 实际播报的文本；没有内容时为 nil
+local function fire(uid, pullIndex)
+  local db = MDT_NPT:GetDB()
+  local beacon = db and db.beacon
+  if not beacon then return nil end
+
+  local text = CooldownAlert.buildText(MDT_NPT:GetDBChar(), uid, pullIndex)
+  if not text then return nil end
+
+  if beacon.alertVoice then CooldownAlert.speak(text) end
+  if beacon.alertText and MDT_NPT.AlertText then MDT_NPT.AlertText:Show(text) end
+  return text
+end
+
+---UpdateAll 的挂钩点。去重键 = presetUID#pullIndex，因此设置面板改动、
+---每秒力量值轮询这些不改变波次的调用都不会重复播报；而 revert 把波次号退回
+---N-1 时键变化，会重新播报——回退后玩家确实需要重新听到那一波的计划。
+function CooldownAlert:OnUpdateAll()
+  local state = MDT_NPT.state
+  local uid = (state and state.active) and CooldownData.getPlanKey(state) or nil
+  local pullIndex = (state and state.active) and state.currentNextPull or nil
+  if not uid or not pullIndex then
+    self:Reset()
+    return
+  end
+
+  local key = uid .. "#" .. pullIndex
+  if key == lastKey then return end
+  lastKey = key
+
+  cancelPending()
+  pending = C_Timer.After(ANNOUNCE_DELAY, function()
+    pending = nil
+    fire(uid, pullIndex)
+  end)
+end
+
+---清去重键并取消待定播报。Stop() 把 state 置 nil 后会经 UpdateAll 走到这里，
+---所以下次开始追踪不会被上一次的键挡住。
+function CooldownAlert:Reset()
+  lastKey = nil
+  cancelPending()
+end
+
+---/npt alert：绕过去重与去抖，立即播报当前 NEXT 波（设计 §10）。
+---@return string|nil 播出去的文本；无内容或未在追踪时为 nil
+function CooldownAlert:SpeakNow()
+  local state = MDT_NPT.state
+  if not state or not state.active then return nil end
+  local uid = CooldownData.getPlanKey(state)
+  if not uid or not state.currentNextPull then return nil end
+  return fire(uid, state.currentNextPull)
+end
+
 MDT_NPT.CooldownAlert = CooldownAlert

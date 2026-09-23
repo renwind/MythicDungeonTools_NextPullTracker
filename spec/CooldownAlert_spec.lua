@@ -145,3 +145,225 @@ describe("CooldownAlert.speak", function()
     end)
   end)
 end)
+
+local function activeState(uid, pullIndex)
+  local state = {
+    active = true,
+    presetUID = uid,
+    currentNextPull = pullIndex,
+    dungeonIndex = 1,
+    pullStates = { [1] = { state = "completed" } },
+  }
+  -- pullIndex 为 nil 表示路由完成；不能写成 pullStates[pullIndex] = ...，
+  -- 那是 table index is nil 的硬错误。
+  if pullIndex then state.pullStates[pullIndex] = { state = "next" } end
+  return state
+end
+
+describe("CooldownAlert 触发编排", function()
+  before_each(function() mocks.reset() end)
+
+  local function scenario(fn)
+    mocks.withCooldownRuntime(function(env)
+      mocks.loadSource("Modules/CooldownData.lua")
+      mocks.loadSource("Modules/CooldownPlan.lua")
+      chineseLocale()
+      mocks.loadSource("Modules/CooldownAlert.lua")
+      fn(env, MDT_NPT.CooldownAlert)
+    end)
+  end
+
+  -- 每条路线的两波都配满三项 use。
+  local function seedPlans(env)
+    env.dbChar.cooldownPlans.a = {
+      [1] = plan(spell(), potion(), lust()),
+      [4] = plan(spell(), potion(), lust()),
+    }
+  end
+
+  it("波次推进后经去抖播报下一波", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll()
+      assert.equals(0, #env.spoken)   -- 还没到点
+      env.fireTimers()
+      assert.equals(1, #env.spoken)
+      assert.equals(THREE, env.spoken[1].text)
+      assert.equals(THREE, env.shown[1])
+    end)
+  end)
+
+  it("同一波反复 UpdateAll 只播一次", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      MDT_NPT.state = activeState("a", 1)
+      for _ = 1, 5 do alert:OnUpdateAll(); env.fireTimers() end
+      assert.equals(1, #env.spoken)
+    end)
+  end)
+
+  it("中途开局连播两次被去抖收敛成一条", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      -- Start() 先为 pull 1 排定一次；约 1 秒后第一次力量值轮询把已清完的
+      -- 波次一次性吃掉、推进到 pull 4 再排定一次。没有去抖就是两条（设计 §5.2）。
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll()
+      MDT_NPT.state = activeState("a", 4)
+      alert:OnUpdateAll()
+      env.fireTimers()
+      assert.equals(1, #env.spoken)
+      assert.equals(THREE, env.spoken[1].text)
+    end)
+  end)
+
+  it("波次号变化会重新播报", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      MDT_NPT.state = activeState("a", 4)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(2, #env.spoken)
+    end)
+  end)
+
+  it("回退到上一波会重新播报", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      MDT_NPT.state = activeState("a", 4)
+      alert:OnUpdateAll(); env.fireTimers()
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(2, #env.spoken)
+    end)
+  end)
+
+  it("换路线（presetUID 变化）会重新播报同一波号", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      env.dbChar.cooldownPlans.b = { [1] = plan(spell(), potion(), lust()) }
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      MDT_NPT.state = activeState("b", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(2, #env.spoken)
+    end)
+  end)
+
+  it("state 为 nil（Stop 之后）清空去重键并取消待定播报", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll()
+      MDT_NPT.state = nil
+      alert:OnUpdateAll()
+      env.fireTimers()
+      assert.equals(0, #env.spoken)
+      -- 重新开追踪后必须还能播，说明 lastKey 真的被清了
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(1, #env.spoken)
+    end)
+  end)
+
+  it("路由完成时静默", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      MDT_NPT.state = activeState("a", nil)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(0, #env.spoken)
+      assert.equals(0, #env.shown)
+    end)
+  end)
+
+  it("关掉语音时只显示文字", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      env.db.beacon.alertVoice = false
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(0, #env.spoken)
+      assert.equals(1, #env.shown)
+    end)
+  end)
+
+  it("关掉文字时只播报语音", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      env.db.beacon.alertText = false
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(1, #env.spoken)
+      assert.equals(0, #env.shown)
+    end)
+  end)
+
+  it("两个开关都关时什么都不做", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      env.db.beacon.alertVoice = false
+      env.db.beacon.alertText = false
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(0, #env.spoken)
+      assert.equals(0, #env.shown)
+    end)
+  end)
+
+  it("开关在去抖窗口内被关掉也生效", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll()
+      env.db.beacon.alertVoice = false
+      env.fireTimers()
+      assert.equals(0, #env.spoken)
+    end)
+  end)
+
+  it("没有 use 条目时既不播也不显示，但仍记住这一波已处理", function()
+    scenario(function(env, alert)
+      env.dbChar.cooldownPlans.a = { [1] = plan(spell("save")) }
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(0, #env.spoken)
+      assert.equals(0, #env.shown)
+    end)
+  end)
+
+  it("SpeakNow 绕过去重与去抖立即播报并返回文本", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      MDT_NPT.state = activeState("a", 1)
+      assert.equals(THREE, alert:SpeakNow())
+      assert.equals(THREE, alert:SpeakNow())   -- 连按两次都出声
+      assert.equals(2, #env.spoken)
+      assert.equals(0, #env.afterTimers)       -- 不排定时器
+    end)
+  end)
+
+  it("SpeakNow 在无计划或未追踪时返回 nil", function()
+    scenario(function(env, alert)
+      env.dbChar.cooldownPlans.a = { [1] = plan(spell("save")) }
+      MDT_NPT.state = activeState("a", 1)
+      assert.is_nil(alert:SpeakNow())
+      assert.equals(0, #env.spoken)
+      MDT_NPT.state = nil
+      assert.is_nil(alert:SpeakNow())
+    end)
+  end)
+
+  it("提醒不依赖信标或冷却图标行的可见性", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      env.db.beacon.showCooldownPlan = false
+      env.db.beacon.enabled = false
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(1, #env.spoken)
+      assert.equals(1, #env.shown)
+    end)
+  end)
+end)
