@@ -85,3 +85,63 @@ describe("CooldownAlert.buildText", function()
     end)
   end)
 end)
+
+describe("CooldownAlert.speak", function()
+  before_each(function() mocks.reset() end)
+
+  local function scenario(fn)
+    mocks.withCooldownRuntime(function(env)
+      mocks.loadSource("Modules/CooldownData.lua")
+      chineseLocale()
+      mocks.loadSource("Modules/CooldownAlert.lua")
+      fn(env, MDT_NPT.CooldownAlert)
+    end)
+  end
+
+  it("用客户端 TTS 设置的音色语速音量播报", function()
+    scenario(function(env, alert)
+      env.tts = { voiceOptionID = 3, rate = 2, volume = 55 }
+      assert.is_true(alert.speak("下一波嗜血"))
+      assert.equals(1, #env.spoken)
+      assert.equals(3, env.spoken[1].voiceID)
+      assert.equals("下一波嗜血", env.spoken[1].text)
+      assert.equals(2, env.spoken[1].rate)
+      assert.equals(55, env.spoken[1].volume)
+    end)
+  end)
+
+  it("C_TTSSettings 缺失时回落到第一个可用音色", function()
+    scenario(function(env, alert)
+      _G.C_TTSSettings = nil
+      env.ttsVoices = { { voiceID = 11, name = "Fallback" } }
+      assert.is_true(alert.speak("下一波嗜血"))
+      assert.equals(11, env.spoken[1].voiceID)
+      assert.equals(0, env.spoken[1].rate)
+      assert.equals(100, env.spoken[1].volume)
+    end)
+  end)
+
+  it("没有任何可用音色时不播报也不报错", function()
+    scenario(function(env, alert)
+      _G.C_TTSSettings = nil
+      env.ttsVoices = {}
+      assert.is_false(alert.speak("下一波嗜血"))
+      assert.equals(0, #env.spoken)
+    end)
+  end)
+
+  it("客户端没有 SpeakText 时安静地放弃", function()
+    scenario(function(env, alert)
+      _G.C_VoiceChat = { GetTtsVoices = function() return env.ttsVoices end }
+      assert.is_false(alert.speak("下一波嗜血"))
+      assert.equals(0, #env.spoken)
+    end)
+  end)
+
+  it("12.x 签名不传 destination，也不默认 overlap", function()
+    scenario(function(env, alert)
+      alert.speak("下一波嗜血")
+      assert.is_nil(env.spoken[1].overlap)
+    end)
+  end)
+end)
