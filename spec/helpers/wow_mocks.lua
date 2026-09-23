@@ -164,6 +164,10 @@ function M.withCooldownRuntime(fn)
       self.regions[#self.regions + 1] = region
       return region
     end
+    -- 有意不区分 kind：真实客户端里 SetJustifyH/V、SetWordWrap 只属于 FontString，
+    -- SetFrameStrata 只属于 Frame。沿用本文件既有的「一个通用 widget」做法
+    -- （SetText 也是哪都挂），按 kind 拆工厂属于过度设计。代价是产品代码把这些
+    -- 方法调到错误的 region 上时，spec 会绿而客户端会崩——写新 UI 时自己留意。
     function w:SetFrameStrata(strata) self.strata = strata end
     function w:SetJustifyH(j) self.justifyH = j end
     function w:SetJustifyV(j) self.justifyV = j end
@@ -237,7 +241,6 @@ function M.withCooldownRuntime(fn)
         }
       end,
       GetTtsVoices = function() return env.ttsVoices end,
-      StopSpeakingText = function() end,
     }
     _G.C_TTSSettings = {
       GetVoiceOptionID = function() return env.tts.voiceOptionID end,
@@ -247,8 +250,15 @@ function M.withCooldownRuntime(fn)
     -- AlertText 的字体回落路径会调 GameFontNormalLarge:GetFont()；不存在的话
     -- 回落分支的断言会因为 nil 索引而假绿。
     _G.GameFontNormalLarge = { GetFont = function() return "Fonts\\blizzard.ttf", 16, "" end }
+    -- Locales/*.lua 在加载期就调 GetLocale()（zhCN/ruRU/frFR 用守卫提前 return），
+    -- 所以在 withCooldownRuntime 内 loadSource 真实 locale 文件时它必须存在。
+    -- 这不是本地化完整性检查的机制，只是让那些文件能被加载。
     _G.GetLocale = function() return "enUS" end
     _G.UIParent = widget("Frame", nil)
+    -- 桩：让 CooldownAlert_spec 只断言 env.shown，不必加载真 UI 模块。
+    -- AlertText_spec 会 loadSource 真模块覆盖掉它。这是 MDT_NPT 的字段写入，
+    -- 不经 names 白名单恢复——安全的前提是 M.reset() 会整体重建 MDT_NPT，
+    -- 与上面既有的 GetDB/GetDBChar 赋值同一模式。
     _G.MDT_NPT.AlertText = {
       Show = function(_, text) env.shown[#env.shown + 1] = text end,
       Hide = function() end,
