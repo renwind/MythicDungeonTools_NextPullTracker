@@ -134,6 +134,28 @@ local function handleSettings()
   end
 end
 
+-- 立即重播当前 NEXT 波的提醒。没有它，游戏内验证文案和样式必须真跑完一波大秘境。
+-- CooldownAlert 在 load_modules.xml 里排在 Slash.lua 之后，所以必须在函数体内
+-- 后取，不能在文件顶层捕获成 upvalue（与 handlePlan 同一手法）。
+local function handleAlert()
+  if not MDT_NPT:IsActive() then
+    print(PREFIX..": tracking is not active.")
+    return
+  end
+  local idx = MDT_NPT:GetCurrentNextPull()
+  if not idx then
+    print(PREFIX..": route complete.")
+    return
+  end
+  local alert = MDT_NPT.CooldownAlert
+  local text = alert and alert:SpeakNow()
+  -- 自动播报路径在无计划时保持静默（设计决策 3），但这条命令是给人当场验证用的，
+  -- 静默会让人以为坏了，所以这里必须出声反馈。
+  if not text then
+    print(PREFIX..": "..MDT_NPT.L["No Planned Uses - %d"]:format(idx))
+  end
+end
+
 -- ============ key-binding actions ============
 -- Keep behaviour identical to the slash equivalents, minus the chat noise — these
 -- fire from key bindings or the right-click menu, so they should be silent.
@@ -195,6 +217,7 @@ commands = {
   { name = "hide",     usage = "hide",        help = "disable and hide the beacon HUD",                   handler = handleHide },
   { name = "settings", usage = "settings",    help = "open the settings panel",                           handler = handleSettings },
   { name = "plan",     usage = "plan",        help = "open the cooldown plan editor",                     handler = handlePlan },
+  { name = "alert",    usage = "alert",       help = "repeat the next pull's cooldown reminder now",      handler = handleAlert },
   { name = "test",     usage = "test",        help = "run the integration test suite",                    handler = handleTest },
   { name = "help",     usage = "help",        help = "show this help message",                            handler = printHelp },
 }

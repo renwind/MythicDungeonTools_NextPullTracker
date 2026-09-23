@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Added
 
+- Next-pull cooldown alerts: when the wave advances, the cooldowns you planned to use on the next pull are spoken aloud through the client's text-to-speech voice and shown as large centered text that fades in and out ("下一波嗜血，下一波爆发药水，下一波升腾" / "Next pull Bloodlust, Next pull Burst Potion, Next pull Ascendance"). Waves with nothing planned stay completely silent. Voice and text are independent toggles under a new Alerts section in the settings panel (`beacon.alertVoice`, `beacon.alertText`, both on by default); speech voice, rate and volume follow the client's own Text To Speech options. The alert fires even when the beacon is hidden and does not require the cooldown plan rows to be shown. `/npt alert` repeats the current reminder on demand.
+
 - Per-NPC notes: middle-click a beacon portrait to attach a note to that mob kind (save / cancel / clear popup). Notes are account-wide, keyed by NPC id (name as fallback), survive across pulls and dungeons, and support WoW colour escapes (`|cffFF4040text|r`). Annotated mobs show a gold line under the name in the portrait tooltip and a gold dot on the portrait corner. An optional "Show Notes" toggle (right-click menu / settings, `beacon.showNpcNotes`, off by default) adds up to 8 note strips above the beacon listing each annotated mob in the current pull — left icon, truncated single-line note, full text on hover.
 
 - Optional light-gray minimap dots for dungeon monsters that are not selected in any pull of the route. The color and opacity can be customized in Pull Colors.

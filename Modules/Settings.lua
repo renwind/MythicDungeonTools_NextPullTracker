@@ -157,6 +157,19 @@ local function buildPanel()
   Settings_API.CreateDropdown(category, scopeSetting, scopeOptions,
     L["Save the beacon position and size per character or shared across the account."])
 
+  -- Cooldown alert channels (design 2026-09-22 §9.3). No onChange callback:
+  -- CooldownAlert reads both at playback time, not at arm time, so a change
+  -- takes effect on the next callout with nothing to refresh here.
+  layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Alerts"]))
+
+  makeBeaconBool(category, "MDTNPT_ALERT_VOICE", L["Voice Alert"],
+    "alertVoice", L["Speak the next pull's planned cooldowns when the wave advances."],
+    nil, true)
+
+  makeBeaconBool(category, "MDTNPT_ALERT_TEXT", L["Center Text Alert"],
+    "alertText", L["Show the same reminder as large text in the middle of the screen."],
+    nil, true)
+
   -- Pull colors: a clickable live preview per state (dots + ring) plus a
   -- reset-to-defaults button, for the minimap dots and the outline around the
   -- current pull. Lives in a custom widget (see SettingsPullColors.lua); wrapped
