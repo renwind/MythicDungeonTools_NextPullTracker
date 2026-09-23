@@ -50,6 +50,13 @@ local defaultSavedVars = {
       -- beacon (design: NpcNotes 5.1). Purely additive: follows the beacon's
       -- existing visibility conditions, never forces the beacon visible.
       showNpcNotes = false,
+      -- Cooldown alert output channels (design 2026-09-22 §9). They live under
+      -- `beacon` only to reuse makeBeaconBool, exactly like showCooldownPlan;
+      -- the alert neither depends on nor affects beacon visibility, and fires
+      -- even with the HUD hidden. Account-wide per the BeaconState convention
+      -- that feature toggles never go char-scoped.
+      alertVoice = true,
+      alertText = true,
       -- Per-state colors for the minimap pull DOTS. {r, g, b, a}. Keys match
       -- BeaconMinimap's pull states.
       pullColors = copyPalette(Theme.pullColors),
@@ -233,6 +240,13 @@ function MDT_NPT:UpdateAll()
   -- OnUpdate poll, since UpdateAll only fires during the 1s tracking timer.
   if MDT_NPT.CooldownPlanEditor and MDT_NPT.CooldownPlanEditor.Refresh then
     MDT_NPT.CooldownPlanEditor:Refresh()
+  end
+  -- Single fan-out point for wave advances: Start, Stop, the scenario forces
+  -- poll and every manual mark/skip/revert all route through here, so the
+  -- alert module needs no hooks of its own (design 2026-09-22 §3). Late-deref
+  -- like the editor line above, so load order can't break it.
+  if MDT_NPT.CooldownAlert and MDT_NPT.CooldownAlert.OnUpdateAll then
+    MDT_NPT.CooldownAlert:OnUpdateAll()
   end
 end
 
