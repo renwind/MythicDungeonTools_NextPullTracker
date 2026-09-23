@@ -5,11 +5,11 @@ local Theme = MDT_NPT.Theme
 -- 说什么由 CooldownAlert 决定，这里只管怎么画出来。
 local AlertText = {}
 
-local Y_OFFSET    = 120   -- 设计 §8.1：正中心会被角色模型和战斗文字压住，上移约 11% 屏高
-local MAX_WIDTH   = 900   -- 设计 §8.1：FontString 的换行宽度约束（UI 像素，非物理像素）
-local FRAME_HEIGHT = 80   -- 设计 §8.1：不裁剪文字，多行照样渲染；调它不影响显示
-local FONT_SIZE   = 30    -- 设计 §8.1：全屏提醒必须显式设字号，Theme 字体槽最大只有 14pt
-local FONT_FLAGS  = "THICKOUTLINE"
+local Y_OFFSET     = 120   -- 设计 §8.1：正中心会被角色模型和战斗文字压住，上移约 11% 屏高
+local MAX_WIDTH    = 900   -- 设计 §8.1：FontString 的换行宽度约束（UI 像素，非物理像素）
+local FRAME_HEIGHT = 80    -- 设计 §8.1：不裁剪文字，多行照样渲染；调它不影响显示
+local FONT_SIZE    = 30    -- 设计 §8.1：全屏提醒必须显式设字号，Theme 字体槽最大只有 14pt
+local FONT_FLAGS   = "THICKOUTLINE"
 local FADE_IN, HOLD, FADE_OUT = 0.15, 2.5, 0.6   -- 设计 §8.3：淡入 / 停留 / 淡出
 
 local frame, text, anim
@@ -49,6 +49,7 @@ local function ensureFrame()
   -- 截断而不是换行。暴雪自己的聊天气泡也成对设这两个（ChatBubbleTemplates.xml）。
   fs:SetNonSpaceWrap(true)
 
+  -- 动画组建在 FontString 上而不是 Frame 上：Alpha 动画对文字区是明确定义的。
   local ag = fs:CreateAnimationGroup()
   local fadeIn = ag:CreateAnimation("Alpha")
   fadeIn:SetOrder(1); fadeIn:SetFromAlpha(0); fadeIn:SetToAlpha(1); fadeIn:SetDuration(FADE_IN)
@@ -58,8 +59,9 @@ local function ensureFrame()
   fadeOut:SetOrder(3); fadeOut:SetFromAlpha(1); fadeOut:SetToAlpha(0); fadeOut:SetDuration(FADE_OUT)
   ag:SetScript("OnFinished", function() f:Hide() end)
 
-  -- 全部建成之后才落地上值：中途抛错就不会让 frame 半初始化，
-  -- 那样 `if frame then return frame end` 会永久跳过剩下的构建（Fix 1 的教训）。
+  -- 全部建成之后才落地上值。中途抛错若已经把 frame 赋上，下面的
+  -- `if frame then return frame end` 就会永久跳过剩下的构建，
+  -- 留下一个没有 OnFinished 处理器的框——提醒再也藏不掉。
   frame, text, anim = f, fs, ag
   applyStyle()
 
