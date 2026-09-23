@@ -104,17 +104,17 @@ function M.withCooldownRuntime(fn)
     -- 冷却提醒（设计 §12.1）
     spoken = {},        -- 每次 SpeakText 的参数快照
     shown = {},         -- 每次 AlertText:Show 的文本
-    afterTimers = {},   -- C_Timer.After 排定的定时器
+    timers = {},        -- C_Timer.After / NewTimer 排定的定时器
     animations = {},    -- 每个 CreateAnimationGroup 的产物
     ttsVoices = { { voiceID = 7, name = "Test Voice" } },
     tts = { voiceOptionID = 7, rate = 0, volume = 80 },
   }
   -- 手动触发所有未取消的 After 定时器；去抖断言全靠它，不依赖真实时间。
   function env.fireTimers()
-    local due = env.afterTimers
-    env.afterTimers = {}
+    local due = env.timers
+    env.timers = {}
     for _, t in ipairs(due) do
-      if not t.cancelled then t.fn() end
+      if not t.cancelled then t.fn(t) end
     end
   end
   local function widget(kind, parent, layer, font)
@@ -224,9 +224,16 @@ function M.withCooldownRuntime(fn)
         env.tickers[#env.tickers + 1] = ticker
         return ticker
       end,
+      -- 零售客户端的 After 不返回句柄，取消不了；要可取消必须用 NewTimer。
+      -- 本机 AddOns 里没有任何插件捕获 After 的返回值，而 NewTimer 的句柄到处
+      -- 被 :Cancel()。曾经让 After 返回句柄，于是去抖失效的 bug 在 spec 里全绿
+      -- ——和 commit ee6b01a 的臆造 mock 方法是同一类陷阱，只是发生在返回值上。
       After = function(delay, fn)
+        env.timers[#env.timers + 1] = { delay = delay, fn = fn }
+      end,
+      NewTimer = function(delay, fn)
         local timer = { delay = delay, fn = fn, Cancel = function(self) self.cancelled = true end }
-        env.afterTimers[#env.afterTimers + 1] = timer
+        env.timers[#env.timers + 1] = timer
         return timer
       end,
     }

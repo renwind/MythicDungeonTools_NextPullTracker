@@ -12,13 +12,14 @@ local ttsWarned = false
 local function warnNoVoiceOnce()
   if ttsWarned then return end
   ttsWarned = true
-  print("|cff00ff00[MDT]|r No text-to-speech voice is available; cooldown alerts will show text only.")
+  print("|cff00ff00[MDT]|r No text-to-speech voice is available; cooldown alerts cannot be spoken.")
 end
 
 ---12.x 的签名是 SpeakText(voiceID, text, rate, volume[, overlap])——destination
 ---参数已被移除，换成可选的 overlap。整句提醒是一次调用，不存在自我重叠，所以
 ---overlap 留默认。不包 pcall：.toc 只声明 120100，写对的调用并在 spec 里精确
 ---mock，比兜住一个不该发生的错误更有价值（参见 commit ee6b01a）。
+---@return boolean spoke  false 表示没有可用语音，调用方不必重试
 function CooldownAlert.speak(text)
   if not (C_VoiceChat and C_VoiceChat.SpeakText) then
     warnNoVoiceOnce()
@@ -47,12 +48,12 @@ function CooldownAlert.speak(text)
   return true
 end
 
--- 组装播报文本；没有任何 use 条目时返回 nil（完全静默，设计 §6.1、决策 3）。
---
--- 逆序遍历是必须的，不是笔误：getActiveEntries 按 seed 顺序返回
--- [升腾, 爆发药水, 嗜血]，而 layoutRow（CooldownPlanRender.lua:198）是右对齐的
--- ——entry 1 贴行右边缘、后续向左堆，所以信标上从左到右读作
--- [嗜血][爆发药水][升腾]。倒着念才和眼睛扫过图标行的方向一致（设计 §6.2）。
+---组装播报文本；没有任何 use 条目时返回 nil（完全静默，设计 §6.1、决策 3）。
+---
+---逆序遍历是必须的，不是笔误：getActiveEntries 按 seed 顺序返回
+---[升腾, 爆发药水, 嗜血]，而 layoutRow（CooldownPlanRender.lua:198）是右对齐的
+---——entry 1 贴行右边缘、后续向左堆，所以信标上从左到右读作
+---[嗜血][爆发药水][升腾]。倒着念才和眼睛扫过图标行的方向一致（设计 §6.2）。
 function CooldownAlert.buildText(dbChar, uid, pullIndex)
   local entries = CooldownData.getActiveEntries(dbChar, uid, pullIndex)
   if not entries or #entries == 0 then return nil end
@@ -61,8 +62,8 @@ function CooldownAlert.buildText(dbChar, uid, pullIndex)
   for i = #entries, 1, -1 do
     local entry = entries[i]
     if entry.plan and entry.plan.action == "use" then
-      -- seed.name 兜底：新增 seed 忘了配 locale 时降级成英文，而不是
-      -- format(nil) 在大秘境中途抛错。Locales_spec 会先一步拦住这种遗漏。
+      -- seed.name 兜底：Locales_spec 只能守住今天已有的 seed，将来新增 seed 忘了配
+      -- locale 时，这里降级成英文键名，而不是 format(nil) 在大秘境中途抛错。
       parts[#parts + 1] = L["Next Pull Alert - %s"]:format(L[entry.seed.name] or entry.seed.name)
     end
   end
@@ -73,13 +74,15 @@ end
 -- 去抖延迟（秒）。中途开局时 Start 会先为 pull 1 排定一次播报，约 1 秒后第一次
 -- 力量值轮询把已清完的波次一次性吃掉、再排定一次；没有去抖就会连播两条，
 -- 而第一条已经过期（设计 §5.2）。这不是优化，是正确性要求。
+-- 必须用 C_Timer.NewTimer 而不是 C_Timer.After：After 在零售客户端不返回句柄，
+-- 取消不了，去抖会静默失效（Core.lua:292 的 NewTicker 同理才拿得到 :Cancel()）。
 local ANNOUNCE_DELAY = 0.75
 
 local lastKey
 local pending
 
 local function cancelPending()
-  if pending and pending.Cancel then pending:Cancel() end
+  if pending then pending:Cancel() end
   pending = nil
 end
 
@@ -88,8 +91,8 @@ end
 ---@return string|nil 实际播报的文本；没有内容时为 nil
 local function fire(uid, pullIndex)
   local db = MDT_NPT:GetDB()
-  local beacon = db and db.beacon
-  if not beacon then return nil end
+  if not db or not db.beacon then return nil end   -- 设计 §11：ADDON_LOADED 之前的极早期
+  local beacon = db.beacon
 
   local text = CooldownAlert.buildText(MDT_NPT:GetDBChar(), uid, pullIndex)
   if not text then return nil end
@@ -104,8 +107,12 @@ end
 ---N-1 时键变化，会重新播报——回退后玩家确实需要重新听到那一波的计划。
 function CooldownAlert:OnUpdateAll()
   local state = MDT_NPT.state
-  local uid = (state and state.active) and CooldownData.getPlanKey(state) or nil
-  local pullIndex = (state and state.active) and state.currentNextPull or nil
+  if not state or not state.active then
+    self:Reset()
+    return
+  end
+  local uid = CooldownData.getPlanKey(state)
+  local pullIndex = state.currentNextPull
   if not uid or not pullIndex then
     self:Reset()
     return
@@ -116,7 +123,7 @@ function CooldownAlert:OnUpdateAll()
   lastKey = key
 
   cancelPending()
-  pending = C_Timer.After(ANNOUNCE_DELAY, function()
+  pending = C_Timer.NewTimer(ANNOUNCE_DELAY, function()
     pending = nil
     fire(uid, pullIndex)
   end)

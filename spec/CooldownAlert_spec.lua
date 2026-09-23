@@ -28,7 +28,6 @@ end
 local function scenario(fn)
   mocks.withCooldownRuntime(function(env)
     mocks.loadSource("Modules/CooldownData.lua")
-    mocks.loadSource("Modules/CooldownPlan.lua")
     chineseLocale()
     mocks.loadSource("Modules/CooldownAlert.lua")
     fn(env, MDT_NPT.CooldownAlert)
@@ -89,15 +88,6 @@ end)
 describe("CooldownAlert.speak", function()
   before_each(function() mocks.reset() end)
 
-  local function scenario(fn)
-    mocks.withCooldownRuntime(function(env)
-      mocks.loadSource("Modules/CooldownData.lua")
-      chineseLocale()
-      mocks.loadSource("Modules/CooldownAlert.lua")
-      fn(env, MDT_NPT.CooldownAlert)
-    end)
-  end
-
   it("用客户端 TTS 设置的音色语速音量播报", function()
     scenario(function(env, alert)
       env.tts = { voiceOptionID = 3, rate = 2, volume = 55 }
@@ -138,7 +128,7 @@ describe("CooldownAlert.speak", function()
     end)
   end)
 
-  it("12.x 签名不传 destination，也不默认 overlap", function()
+  it("12.x 签名不把 overlap 当默认值传出去", function()
     scenario(function(env, alert)
       alert.speak("下一波嗜血")
       assert.is_nil(env.spoken[1].overlap)
@@ -163,16 +153,6 @@ end
 describe("CooldownAlert 触发编排", function()
   before_each(function() mocks.reset() end)
 
-  local function scenario(fn)
-    mocks.withCooldownRuntime(function(env)
-      mocks.loadSource("Modules/CooldownData.lua")
-      mocks.loadSource("Modules/CooldownPlan.lua")
-      chineseLocale()
-      mocks.loadSource("Modules/CooldownAlert.lua")
-      fn(env, MDT_NPT.CooldownAlert)
-    end)
-  end
-
   -- 每条路线的两波都配满三项 use。
   local function seedPlans(env)
     env.dbChar.cooldownPlans.a = {
@@ -188,7 +168,7 @@ describe("CooldownAlert 触发编排", function()
       alert:OnUpdateAll()
       -- 去抖时长是正确性参数：必须长到能盖过 Start 与第一次力量值轮询之间的那一秒，
       -- 否则中途开局会连播两条。见 CooldownAlert.lua 的 ANNOUNCE_DELAY 注释。
-      assert.equals(0.75, env.afterTimers[1].delay)
+      assert.equals(0.75, env.timers[1].delay)
       assert.equals(0, #env.spoken)   -- 还没到点
       env.fireTimers()
       assert.equals(1, #env.spoken)
@@ -333,7 +313,7 @@ describe("CooldownAlert 触发编排", function()
       alert:OnUpdateAll()
       alert:OnUpdateAll()
       -- 静默的波次同样写进去重键，所以第二次没有再排定时器
-      assert.equals(1, #env.afterTimers)
+      assert.equals(1, #env.timers)
       env.fireTimers()
       assert.equals(0, #env.spoken)
       assert.equals(0, #env.shown)
@@ -347,7 +327,7 @@ describe("CooldownAlert 触发编排", function()
       assert.equals(THREE, alert:SpeakNow())
       assert.equals(THREE, alert:SpeakNow())   -- 连按两次都出声
       assert.equals(2, #env.spoken)
-      assert.equals(0, #env.afterTimers)       -- 不排定时器
+      assert.equals(0, #env.timers)       -- 不排定时器
     end)
   end)
 

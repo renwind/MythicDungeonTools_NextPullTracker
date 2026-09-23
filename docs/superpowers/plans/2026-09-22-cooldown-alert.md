@@ -42,6 +42,17 @@ baseline 版 wow_mocks 再跑」验证过：失败集合与本功能的改动无
 Task 8 Step 5 的全量回归，预期结果就是这 3 个失败依旧、且只有这 3 个。
 任何实现者看到这 3 个失败都**不要**去修，也**不要**报 BLOCKED。
 
+## 实现期修正：C_Timer.After 不可取消
+
+计划 Task 5 原本用 `C_Timer.After` 排定去抖定时器并保存句柄。**零售客户端的
+`C_Timer.After` 不返回句柄**，只有 `C_Timer.NewTimer` 返回可 `:Cancel()` 的句柄
+（`Core.lua:292` 的 `NewTicker` 同理）。原写法下 `pending` 恒为 nil，去抖静默失效，
+中途开局会连播两条、`/npt stop` 也压不住已排定的播报。
+
+之所以没被测试抓到：Task 1 的 mock 给 `After` 臆造了返回值——和 commit `ee6b01a`
+的臆造 mock 方法同类，只是发生在返回值上。已改为 `NewTimer`，并把 mock 的 `After`
+修正为不返回任何值。
+
 ## 测试命令
 
 - 本地单个 spec：`node .tmp-npt-task/luaenv/minibusted.js spec/CooldownAlert_spec.lua`
@@ -122,17 +133,17 @@ Task 8 Step 5 的全量回归，预期结果就是这 3 个失败依旧、且只
     -- 冷却提醒（设计 §12.1）
     spoken = {},        -- 每次 SpeakText 的参数快照
     shown = {},         -- 每次 AlertText:Show 的文本
-    afterTimers = {},   -- C_Timer.After 排定的定时器
+    timers = {},        -- C_Timer.After / NewTimer 排定的定时器
     animations = {},    -- 每个 CreateAnimationGroup 的产物
     ttsVoices = { { voiceID = 7, name = "Test Voice" } },
     tts = { voiceOptionID = 7, rate = 0, volume = 80 },
   }
   -- 手动触发所有未取消的 After 定时器；去抖断言全靠它，不依赖真实时间。
   function env.fireTimers()
-    local due = env.afterTimers
-    env.afterTimers = {}
+    local due = env.timers
+    env.timers = {}
     for _, t in ipairs(due) do
-      if not t.cancelled then t.fn() end
+      if not t.cancelled then t.fn(t) end
     end
   end
 ```
@@ -183,9 +194,16 @@ Task 8 Step 5 的全量回归，预期结果就是这 3 个失败依旧、且只
         env.tickers[#env.tickers + 1] = ticker
         return ticker
       end,
+      -- 零售客户端的 After 不返回句柄，取消不了；要可取消必须用 NewTimer。
+      -- 本机 AddOns 里没有任何插件捕获 After 的返回值，而 NewTimer 的句柄到处
+      -- 被 :Cancel()。曾经让 After 返回句柄，于是去抖失效的 bug 在 spec 里全绿
+      -- ——和 commit ee6b01a 的臆造 mock 方法是同一类陷阱，只是发生在返回值上。
       After = function(delay, fn)
+        env.timers[#env.timers + 1] = { delay = delay, fn = fn }
+      end,
+      NewTimer = function(delay, fn)
         local timer = { delay = delay, fn = fn, Cancel = function(self) self.cancelled = true end }
-        env.afterTimers[#env.afterTimers + 1] = timer
+        env.timers[#env.timers + 1] = timer
         return timer
       end,
     }
@@ -916,7 +934,7 @@ describe("CooldownAlert 触发编排", function()
       assert.equals(THREE, alert:SpeakNow())
       assert.equals(THREE, alert:SpeakNow())   -- 连按两次都出声
       assert.equals(2, #env.spoken)
-      assert.equals(0, #env.afterTimers)       -- 不排定时器
+      assert.equals(0, #env.timers)       -- 不排定时器
     end)
   end)
 
@@ -958,13 +976,15 @@ Expected: FAIL —— `attempt to call a nil value (method 'OnUpdateAll')`
 -- 去抖延迟（秒）。中途开局时 Start 会先为 pull 1 排定一次播报，约 1 秒后第一次
 -- 力量值轮询把已清完的波次一次性吃掉、再排定一次；没有去抖就会连播两条，
 -- 而第一条已经过期（设计 §5.2）。这不是优化，是正确性要求。
+-- 必须用 C_Timer.NewTimer 而不是 C_Timer.After：After 在零售客户端不返回句柄，
+-- 取消不了，去抖会静默失效（Core.lua:292 的 NewTicker 同理才拿得到 :Cancel()）。
 local ANNOUNCE_DELAY = 0.75
 
 local lastKey
 local pending
 
 local function cancelPending()
-  if pending and pending.Cancel then pending:Cancel() end
+  if pending then pending:Cancel() end
   pending = nil
 end
 
@@ -973,8 +993,8 @@ end
 ---@return string|nil 实际播报的文本；没有内容时为 nil
 local function fire(uid, pullIndex)
   local db = MDT_NPT:GetDB()
-  local beacon = db and db.beacon
-  if not beacon then return nil end
+  if not db or not db.beacon then return nil end   -- 设计 §11：ADDON_LOADED 之前的极早期
+  local beacon = db.beacon
 
   local text = CooldownAlert.buildText(MDT_NPT:GetDBChar(), uid, pullIndex)
   if not text then return nil end
@@ -989,8 +1009,12 @@ end
 ---N-1 时键变化，会重新播报——回退后玩家确实需要重新听到那一波的计划。
 function CooldownAlert:OnUpdateAll()
   local state = MDT_NPT.state
-  local uid = (state and state.active) and CooldownData.getPlanKey(state) or nil
-  local pullIndex = (state and state.active) and state.currentNextPull or nil
+  if not state or not state.active then
+    self:Reset()
+    return
+  end
+  local uid = CooldownData.getPlanKey(state)
+  local pullIndex = state.currentNextPull
   if not uid or not pullIndex then
     self:Reset()
     return
@@ -1001,7 +1025,7 @@ function CooldownAlert:OnUpdateAll()
   lastKey = key
 
   cancelPending()
-  pending = C_Timer.After(ANNOUNCE_DELAY, function()
+  pending = C_Timer.NewTimer(ANNOUNCE_DELAY, function()
     pending = nil
     fire(uid, pullIndex)
   end)
@@ -1788,7 +1812,7 @@ git push
 - `CooldownAlert.speak(text)` —— Task 4 定义并导出，Task 5 以 `CooldownAlert.speak(text)` 调用（不是 `speak(text)`，因为 `fire` 里要走导出名以便 spec 打桩）
 - `CooldownAlert:OnUpdateAll()` / `:Reset()` / `:SpeakNow()` —— Task 5 定义，Task 7 挂钩与 Task 8 的 `handleAlert` 调用名一致
 - `AlertText:Show(message)` / `:Hide()` —— Task 6 定义，Task 1 的 mock 桩与 Task 5 的 `fire` 调用签名一致
-- `env.spoken` / `env.shown` / `env.afterTimers` / `env.animations` / `env.fireTimers()` —— Task 1 定义，Task 3-6 的 spec 使用名一致
+- `env.spoken` / `env.shown` / `env.timers` / `env.animations` / `env.fireTimers()` —— Task 1 定义，Task 3-6 的 spec 使用名一致
 - `db.beacon.alertVoice` / `db.beacon.alertText` —— Task 1（mock）、Task 5（读取）、Task 7（默认值）、Task 8（设置面板 key）四处拼写一致
 - locale 键名 —— Task 2 定义，Task 3（`Next Pull Alert - %s`、`Alert List Joiner`）与 Task 8（`Alerts`、`Voice Alert`、`Center Text Alert`、`No Planned Uses - %d`）使用名一致
 - `group.owner`（mock 字段）/ `owner.parent`（框体）—— Task 6 Step 3 定义、Step 1 的 `parts()` 使用；实现侧不需要任何测试专用字段
