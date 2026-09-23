@@ -20,7 +20,7 @@ Requires Mythic Dungeon Tools to be installed and enabled.
 - Per-NPC notes: middle-click a portrait to annotate a mob type, shown on the portrait tooltip and as note strips above the Beacon
 - Per-wave notes: middle-click the map to annotate the pull itself — the note rides the strip closest to the Beacon and flags itself if a route edit shifts it onto a different wave
 - Cooldown plan: per-pull use/save plans for Ascendance, burst potion and Bloodlust (its cell is planning-only — no CD sweep; the left-end monitor owns live readiness) with route-wide use ordinals; mouse-wheel the Ascendance cell in the editor to set uses per pull (1-3), shown as an ×N badge in the icon's top-right corner while the ordinal sits bottom-left
-- Next-pull cooldown alerts: planned burst cooldowns for the incoming wave are spoken via the client's TTS voice and shown as large centered text the moment the wave advances; silent on waves with nothing planned. Independent voice / text toggles, `/npt alert` to repeat on demand
+- Next-pull cooldown alerts: planned burst cooldowns for the incoming wave are spoken via the client's TTS voice and shown as large centered text the moment the wave advances; silent on waves with nothing planned. Independent voice / text toggles, `/npt alert` to repeat on demand. Reads the cooldown plan, so it is seeded for Elemental Shaman only
 - Auto-start when a Mythic+ key begins, auto-stop when it ends
 - One-shot migration of existing Next Pull settings from the parent MDT addon
 - Retail (Midnight / 12.0) support
@@ -29,10 +29,16 @@ Requires Mythic Dungeon Tools to be installed and enabled.
 
 - `/npt start` — start tracking the current preset
 - `/npt stop` — stop tracking
+- `/npt status` — print the current pull's state and forces
 - `/npt skip <N>` — skip directly to pull N
 - `/npt complete` — mark the active/next pull complete
-- `/npt status` — print current tracking state and scenario forces
-- `/npt info` — full diagnostics (feature flags, preset, scenario criteria)
+- `/npt revert` — undo the most recent pull completion
+- `/npt show` / `/npt hide` — enable or disable the Beacon HUD
+- `/npt plan` — open the cooldown plan editor
+- `/npt alert` — repeat the next pull's cooldown reminder now
+- `/npt settings` — open the settings panel
+- `/npt help` — list these commands
+- `/npt test` — run the integration test suite (developer builds only)
 
 Right-click the Beacon for per-session toggles (lock, show upcoming, hide, stop tracking).
 
