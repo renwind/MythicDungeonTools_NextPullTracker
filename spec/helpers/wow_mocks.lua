@@ -172,8 +172,9 @@ function M.withCooldownRuntime(fn)
     function w:SetJustifyH(j) self.justifyH = j end
     function w:SetJustifyV(j) self.justifyV = j end
     function w:SetWordWrap(wrap) self.wordWrap = wrap end
+    function w:SetNonSpaceWrap(wrap) self.nonSpaceWrap = wrap end
     function w:CreateAnimationGroup()
-      local group = { animations = {}, playing = false, plays = 0, stops = 0 }
+      local group = { animations = {}, playing = false, plays = 0, stops = 0, scripts = {} }
       function group:CreateAnimation(kind)
         local a = { kind = kind }
         function a:SetOrder(n) self.order = n end
@@ -186,12 +187,15 @@ function M.withCooldownRuntime(fn)
       function group:Play() self.playing = true; self.plays = self.plays + 1 end
       function group:Stop() self.playing = false; self.stops = self.stops + 1 end
       function group:IsPlaying() return self.playing end
-      function group:SetOnFinished(fn) self.onFinished = fn end
+      function group:SetScript(name, fn) self.scripts[name] = fn end
       -- 仅测试用：真实 AnimationGroup 没有 Finish。下划线前缀提醒它不是客户端 API，
       -- 产品代码绝不可调用（参见 commit ee6b01a 关于「臆造 mock 方法」的教训）。
+      -- 只 mock 真实存在的 SetScript("OnFinished", fn)：AnimationGroup 没有
+      -- SetOnFinished 方法（全机 AddOns 零命中，SetScript 形式 55 命中）。
+      -- 曾经臆造过它，于是产品代码调一个不存在的方法而 spec 全绿。
       function group:_testFinish()
         self.playing = false
-        if self.onFinished then self.onFinished() end
+        if self.scripts.OnFinished then self.scripts.OnFinished(self) end
       end
       group.owner = self   -- 测试抓手：谁创建了这个动画组（AlertText 里是 FontString）
       env.animations[#env.animations + 1] = group

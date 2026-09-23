@@ -53,6 +53,24 @@ Task 8 Step 5 的全量回归，预期结果就是这 3 个失败依旧、且只
 的臆造 mock 方法同类，只是发生在返回值上。已改为 `NewTimer`，并把 mock 的 `After`
 修正为不返回任何值。
 
+## 实现期修正：AnimationGroup 没有 SetOnFinished
+
+计划 Task 6 用 `anim:SetOnFinished(fn)` 在淡出结束时隐藏框体。**客户端没有这个方法**：
+全机 AddOns（约 70 个插件、2226 个 Lua 文件）里 `setonfinished` 零命中，
+而 `SetScript("OnFinished", fn)` 有 55 处（含 LibCustomGlow-1.0）。正确写法是
+`anim:SetScript("OnFinished", fn)`。
+
+Task 1 的 mock 又臆造了 `group:SetOnFinished`，导致把产品代码改成正确 API 后
+spec 反而 9 红——测试基础设施在给 bug 撑腰。这是本项目第三次同类问题
+（前两次：`ee6b01a` 的 `FontString:SetOutlined`、`C_Timer.After` 的返回值）。
+mock 已改为只提供 `SetScript`。
+
+真实客户端的后果比「报一次错」严重：第一次 `Show()` 会在 `ensureFrame` 中途抛错，
+而那时 `frame` 已经赋过值，之后每次 `Show()` 都走 `if frame then return frame end`
+提前返回、看着像正常，实际从没装上结束回调——提醒永不隐藏，最后一条消息会以全不透明
+钉在 `FULLSCREEN_DIALOG` 上直到本次会话结束。因此实现里改成先在局部变量中建完、
+最后一步才落地 `frame, text, anim`，让构建失败可以重试。
+
 ## 测试命令
 
 - 本地单个 spec：`node .tmp-npt-task/luaenv/minibusted.js spec/CooldownAlert_spec.lua`
@@ -158,7 +176,7 @@ Task 8 Step 5 的全量回归，预期结果就是这 3 个失败依旧、且只
     function w:SetJustifyV(j) self.justifyV = j end
     function w:SetWordWrap(wrap) self.wordWrap = wrap end
     function w:CreateAnimationGroup()
-      local group = { animations = {}, playing = false, plays = 0, stops = 0 }
+      local group = { animations = {}, playing = false, plays = 0, stops = 0, scripts = {} }
       function group:CreateAnimation(kind)
         local a = { kind = kind }
         function a:SetOrder(n) self.order = n end
@@ -171,12 +189,15 @@ Task 8 Step 5 的全量回归，预期结果就是这 3 个失败依旧、且只
       function group:Play() self.playing = true; self.plays = self.plays + 1 end
       function group:Stop() self.playing = false; self.stops = self.stops + 1 end
       function group:IsPlaying() return self.playing end
-      function group:SetOnFinished(fn) self.onFinished = fn end
+      function group:SetScript(name, fn) self.scripts[name] = fn end
       -- 仅测试用：真实 AnimationGroup 没有 Finish。下划线前缀提醒它不是客户端 API，
       -- 产品代码绝不可调用（参见 commit ee6b01a 关于「臆造 mock 方法」的教训）。
+      -- 只 mock 真实存在的 SetScript("OnFinished", fn)：AnimationGroup 没有
+      -- SetOnFinished 方法（全机 AddOns 零命中，SetScript 形式 55 命中）。
+      -- 曾经臆造过它，于是产品代码调一个不存在的方法而 spec 全绿。
       function group:_testFinish()
         self.playing = false
-        if self.onFinished then self.onFinished() end
+        if self.scripts.OnFinished then self.scripts.OnFinished(self) end
       end
       env.animations[#env.animations + 1] = group
       return group
@@ -1296,7 +1317,7 @@ local function ensureFrame()
   hold:SetOrder(2); hold:SetFromAlpha(1); hold:SetToAlpha(1); hold:SetDuration(HOLD)
   local fadeOut = anim:CreateAnimation("Alpha")
   fadeOut:SetOrder(3); fadeOut:SetFromAlpha(1); fadeOut:SetToAlpha(0); fadeOut:SetDuration(FADE_OUT)
-  anim:SetOnFinished(function() frame:Hide() end)
+  anim:SetScript("OnFinished", function() frame:Hide() end)
 
   -- EUI 主题变化后重新取字体文件（Theme.lua:253）。
   if Theme.RegisterRefreshCallback then

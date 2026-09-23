@@ -261,7 +261,8 @@ AnimationGroup 三段，`SetOrder` 1/2/3：
 | 停留 | Alpha | 2.5s | 1 → 1 |
 | 淡出 | Alpha | 0.6s | 1 → 0 |
 
-`SetOnFinished` 里 `Hide()`。
+`SetScript("OnFinished", ...)` 里 `Hide()`。**`AnimationGroup` 没有 `SetOnFinished` 方法**——
+全机 AddOns 里 `setonfinished` 零命中、`SetScript("OnFinished"` 55 命中，只能走 `SetScript`。
 
 **重入**：`Show()` 被再次调用时先 `Stop()` 再 `Play()`，让新提醒立刻顶掉旧的，
 而不是等上一条播完。
@@ -355,7 +356,8 @@ Lua 5.1 + busted 2.x 为准。
 - `C_Timer.After(delay, fn)` → 追加到 `env.afterTimers`，并提供 `env.fireTimers()`
   手动触发；`NewTicker` 已有，保持不动
 - widget mock 补 `CreateAnimationGroup()`，返回带 `CreateAnimation` / `Play` / `Stop` /
-  `SetOnFinished` 的对象，并记录 `env.animations`
+  `SetScript` 的对象，并记录 `env.animations`。`AnimationGroup` 没有 `SetOnFinished`，
+  mock 也不许臆造它——只能提供真实的 `SetScript("OnFinished", fn)`
 - widget mock 补 `SetFrameStrata` / `SetJustifyH` / `SetJustifyV` / `SetWordWrap` /
   `SetShadowColor`（已有）/ `SetShadowOffset`（已有）
 - `_G.GameFontNormalLarge`：§8.2 的字体回落路径会调它的 `GetFont()`，
@@ -382,7 +384,7 @@ Lua 5.1 + busted 2.x 为准。
 
 - `Show(text)` 设置文本、显示、启动动画
 - 连续 `Show` → 先 `Stop` 再 `Play`
-- `SetOnFinished` 回调触发后隐藏
+- `SetScript("OnFinished", ...)` 回调触发后隐藏
 - 字体：显式字号 30 + `THICKOUTLINE`；`Theme.GetFontPath()` 返回路径时用该路径，
   返回 nil 时回落到 `GameFontNormalLarge:GetFont()`
 
