@@ -19,7 +19,7 @@ local function potion(action)
   return { kind = "item", id = 241308, action = action or "use" }
 end
 local function lust(action, id)
-  return { kind = "spell", id = 2825, action = action or "use" }
+  return { kind = "spell", id = id or 2825, action = action or "use" }
 end
 local function plan(...)
   return { entries = { ... } }
@@ -186,6 +186,9 @@ describe("CooldownAlert 触发编排", function()
       seedPlans(env)
       MDT_NPT.state = activeState("a", 1)
       alert:OnUpdateAll()
+      -- 去抖时长是正确性参数：必须长到能盖过 Start 与第一次力量值轮询之间的那一秒，
+      -- 否则中途开局会连播两条。见 CooldownAlert.lua 的 ANNOUNCE_DELAY 注释。
+      assert.equals(0.75, env.afterTimers[1].delay)
       assert.equals(0, #env.spoken)   -- 还没到点
       env.fireTimers()
       assert.equals(1, #env.spoken)
@@ -327,7 +330,11 @@ describe("CooldownAlert 触发编排", function()
     scenario(function(env, alert)
       env.dbChar.cooldownPlans.a = { [1] = plan(spell("save")) }
       MDT_NPT.state = activeState("a", 1)
-      alert:OnUpdateAll(); env.fireTimers()
+      alert:OnUpdateAll()
+      alert:OnUpdateAll()
+      -- 静默的波次同样写进去重键，所以第二次没有再排定时器
+      assert.equals(1, #env.afterTimers)
+      env.fireTimers()
       assert.equals(0, #env.spoken)
       assert.equals(0, #env.shown)
     end)
