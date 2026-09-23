@@ -92,15 +92,31 @@ function M.withCooldownRuntime(fn)
     "C_SpecializationInfo", "C_SpellBook", "Enum", "C_Spell", "C_Item", "C_Timer",
     "GetTime", "GetPhysicalScreenSize", "CreateFrame", "EllesmereUI", "unpack",
     "IsControlKeyDown", "MDTNPTCooldownPlanMixin",
+    "C_VoiceChat", "C_TTSSettings", "UIParent", "GameFontNormalLarge", "GetLocale",
   }
   local saved = {}
   for _, name in ipairs(names) do saved[name] = _G[name] end
   local env = {
     specID = 262, time = 100, tickers = {},
     dbChar = { cooldownPotionID = 241308, cooldownPlans = {} },
-    db = { beacon = { showCooldownPlan = true } },
+    db = { beacon = { showCooldownPlan = true, alertVoice = true, alertText = true } },
     cooldown = { isEnabled = true, isActive = false, startTime = 0, duration = 0 },
+    -- 冷却提醒（设计 §12.1）
+    spoken = {},        -- 每次 SpeakText 的参数快照
+    shown = {},         -- 每次 AlertText:Show 的文本
+    afterTimers = {},   -- C_Timer.After 排定的定时器
+    animations = {},    -- 每个 CreateAnimationGroup 的产物
+    ttsVoices = { { voiceID = 7, name = "Test Voice" } },
+    tts = { voiceOptionID = 7, rate = 0, volume = 80 },
   }
+  -- 手动触发所有未取消的 After 定时器；去抖断言全靠它，不依赖真实时间。
+  function env.fireTimers()
+    local due = env.afterTimers
+    env.afterTimers = {}
+    for _, t in ipairs(due) do
+      if not t.cancelled then t.fn() end
+    end
+  end
   local function widget(kind, parent, layer, font)
     local w = {
       kind = kind, parent = parent, layer = layer, font = font,
@@ -148,6 +164,35 @@ function M.withCooldownRuntime(fn)
       self.regions[#self.regions + 1] = region
       return region
     end
+    function w:SetFrameStrata(strata) self.strata = strata end
+    function w:SetJustifyH(j) self.justifyH = j end
+    function w:SetJustifyV(j) self.justifyV = j end
+    function w:SetWordWrap(wrap) self.wordWrap = wrap end
+    function w:CreateAnimationGroup()
+      local group = { animations = {}, playing = false, plays = 0, stops = 0 }
+      function group:CreateAnimation(kind)
+        local a = { kind = kind }
+        function a:SetOrder(n) self.order = n end
+        function a:SetFromAlpha(v) self.from = v end
+        function a:SetToAlpha(v) self.to = v end
+        function a:SetDuration(d) self.duration = d end
+        self.animations[#self.animations + 1] = a
+        return a
+      end
+      function group:Play() self.playing = true; self.plays = self.plays + 1 end
+      function group:Stop() self.playing = false; self.stops = self.stops + 1 end
+      function group:IsPlaying() return self.playing end
+      function group:SetOnFinished(fn) self.onFinished = fn end
+      -- 仅测试用：真实 AnimationGroup 没有 Finish。下划线前缀提醒它不是客户端 API，
+      -- 产品代码绝不可调用（参见 commit ee6b01a 关于「臆造 mock 方法」的教训）。
+      function group:_testFinish()
+        self.playing = false
+        if self.onFinished then self.onFinished() end
+      end
+      group.owner = self   -- 测试抓手：谁创建了这个动画组（AlertText 里是 FontString）
+      env.animations[#env.animations + 1] = group
+      return group
+    end
     function w:CreateFontString(_, drawLayer, fontObject)
       local region = widget("FontString", self, drawLayer, fontObject)
       self.regions[#self.regions + 1] = region
@@ -163,21 +208,51 @@ function M.withCooldownRuntime(fn)
       GetSpecializationInfo = function() return env.specID end,
     }
     _G.C_SpellBook = { IsSpellInSpellBook = function() return true end }
-    _G.Enum = { SpellBookSpellBank = { Player = 0 } }
+    _G.Enum = { SpellBookSpellBank = { Player = 0 }, TtsVoiceType = { Standard = 0 } }
     _G.C_Spell = {
       GetSpellTexture = function(id) return "spell:" .. id end,
       GetSpellCooldown = function() return env.cooldown end,
     }
     _G.C_Item = { GetItemIconByID = function(id) return "item:" .. id end }
-    _G.C_Timer = { NewTicker = function(_, callback)
-      local ticker = { callback = callback, Cancel = function(self) self.cancelled = true end }
-      env.tickers[#env.tickers + 1] = ticker
-      return ticker
-    end }
+    _G.C_Timer = {
+      NewTicker = function(_, callback)
+        local ticker = { callback = callback, Cancel = function(self) self.cancelled = true end }
+        env.tickers[#env.tickers + 1] = ticker
+        return ticker
+      end,
+      After = function(delay, fn)
+        local timer = { delay = delay, fn = fn, Cancel = function(self) self.cancelled = true end }
+        env.afterTimers[#env.afterTimers + 1] = timer
+        return timer
+      end,
+    }
     _G.GetTime = function() return env.time end
     _G.GetPhysicalScreenSize = function() return 1920, 1080 end
     _G.IsControlKeyDown = function() return false end
     _G.CreateFrame = function(kind, _, parent) return widget(kind, parent) end
+    _G.C_VoiceChat = {
+      SpeakText = function(voiceID, text, rate, volume, overlap)
+        env.spoken[#env.spoken + 1] = {
+          voiceID = voiceID, text = text, rate = rate, volume = volume, overlap = overlap,
+        }
+      end,
+      GetTtsVoices = function() return env.ttsVoices end,
+      StopSpeakingText = function() end,
+    }
+    _G.C_TTSSettings = {
+      GetVoiceOptionID = function() return env.tts.voiceOptionID end,
+      GetSpeechRate = function() return env.tts.rate end,
+      GetSpeechVolume = function() return env.tts.volume end,
+    }
+    -- AlertText 的字体回落路径会调 GameFontNormalLarge:GetFont()；不存在的话
+    -- 回落分支的断言会因为 nil 索引而假绿。
+    _G.GameFontNormalLarge = { GetFont = function() return "Fonts\\blizzard.ttf", 16, "" end }
+    _G.GetLocale = function() return "enUS" end
+    _G.UIParent = widget("Frame", nil)
+    _G.MDT_NPT.AlertText = {
+      Show = function(_, text) env.shown[#env.shown + 1] = text end,
+      Hide = function() end,
+    }
     _G.MDT_NPT.MDT = _G.MDT
     _G.MDT_NPT.GetDBChar = function() return env.dbChar end
     _G.MDT_NPT.GetDB = function() return env.db end
