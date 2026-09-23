@@ -161,14 +161,15 @@ describe("CooldownAlert 触发编排", function()
     }
   end
 
-  it("波次推进后经去抖播报下一波", function()
+  it("波次推进后经去抖播报下一波，且去抖长于轮询周期", function()
     scenario(function(env, alert)
       seedPlans(env)
       MDT_NPT.state = activeState("a", 1)
       alert:OnUpdateAll()
-      -- 去抖时长是正确性参数：必须长到能盖过 Start 与第一次力量值轮询之间的那一秒，
-      -- 否则中途开局会连播两条。见 CooldownAlert.lua 的 ANNOUNCE_DELAY 注释。
-      assert.equals(0.75, env.timers[1].delay)
+      -- 不变量：去抖时长必须盖过 Core.lua:307 的 NewTicker(1.0) 轮询周期，否则
+      -- Start 排定的那次会在轮询取消它之前就播出去。断言下界而不是字面量——
+      -- 断 0.75 那种写法在把常量改成 0.1（客户端里必定双播）时依然是绿的。
+      assert.is_true(env.timers[1].delay > 1.0)
       assert.equals(0, #env.spoken)   -- 还没到点
       env.fireTimers()
       assert.equals(1, #env.spoken)
@@ -248,6 +249,20 @@ describe("CooldownAlert 触发编排", function()
       MDT_NPT.state = activeState("a", 1)
       alert:OnUpdateAll(); env.fireTimers()
       assert.equals(1, #env.spoken)
+    end)
+  end)
+
+  it("停止追踪会立刻收起屏幕上的提醒", function()
+    scenario(function(env, alert)
+      seedPlans(env)
+      MDT_NPT.state = activeState("a", 1)
+      alert:OnUpdateAll(); env.fireTimers()
+      assert.equals(1, #env.shown)
+      local hideCalls = 0
+      MDT_NPT.AlertText.Hide = function() hideCalls = hideCalls + 1 end
+      MDT_NPT.state = nil
+      alert:OnUpdateAll()
+      assert.equals(1, hideCalls)
     end)
   end)
 

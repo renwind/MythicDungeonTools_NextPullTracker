@@ -25,8 +25,6 @@ local function applyStyle()
   text:SetFont(file, FONT_SIZE, FONT_FLAGS)
   local color = Theme.colors.accent
   text:SetTextColor(color[1], color[2], color[3], 1)
-  text:SetShadowColor(0, 0, 0, 1)
-  text:SetShadowOffset(1, -1)
 end
 
 local function ensureFrame()

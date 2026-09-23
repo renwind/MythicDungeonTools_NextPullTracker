@@ -4,7 +4,7 @@
 
 **Goal:** 波次推进时用游戏内置 TTS 念出下一波计划里要开的爆发技能，并在屏幕中部显示同一句文字。
 
-**Architecture:** 两个新模块 —— `CooldownAlert.lua`（纯逻辑：何时说、说什么）与 `AlertText.lua`（UI 薄层：怎么显示）。触发点只有一处：`MDT_NPT:UpdateAll()`，它是 `Start`/`Stop`/力量值推进/手动 mark/skip/revert 的唯一汇聚点。播报经 0.75 秒可取消去抖定时器，去重键为 `presetUID#pullIndex`。
+**Architecture:** 两个新模块 —— `CooldownAlert.lua`（纯逻辑：何时说、说什么）与 `AlertText.lua`（UI 薄层：怎么显示）。触发点只有一处：`MDT_NPT:UpdateAll()`，它是 `Start`/`Stop`/力量值推进/手动 mark/skip/revert 的唯一汇聚点。播报经 1.25 秒可取消去抖定时器（必须大于 1.0 秒的力量值轮询周期，见下文「实现期修正」），去重键为 `presetUID#pullIndex`。
 
 **Tech Stack:** WoW 12.1 (Interface 120100) Lua 5.1、`C_VoiceChat.SpeakText`、AnimationGroup、AceDB-3.0、busted 2.x（CI）/ fengari minibusted（本地）。
 
@@ -70,6 +70,17 @@ mock 已改为只提供 `SetScript`。
 提前返回、看着像正常，实际从没装上结束回调——提醒永不隐藏，最后一条消息会以全不透明
 钉在 `FULLSCREEN_DIALOG` 上直到本次会话结束。因此实现里改成先在局部变量中建完、
 最后一步才落地 `frame, text, anim`，让构建失败可以重试。
+
+## 实现期修正：去抖时长必须大于轮询周期
+
+设计 §5.2 原本定 `ANNOUNCE_DELAY = 0.75`，并声称 t≈1.0s 的力量值轮询会取消
+Start 排定的那次。算术不成立：0.75 < 1.0，pull 1 的播报在轮询之前就已经出去了，
+中途开局照样双播。已改为 1.25，并把「必须大于 Core.lua:307 的 NewTicker(1.0) 周期」
+写成代码里的显式不变量。
+
+spec 侧同时暴露一个问题：`env.fireTimers()` 不看 delay，所以那条「回归锁」断言的
+是字面量 0.75 而不是行为——把常量改成 0.1（客户端里必定双播）时它依然全绿。
+已改为断言下界 `delay > 1.0`。
 
 ## 测试命令
 
@@ -994,12 +1005,17 @@ Expected: FAIL —— `attempt to call a nil value (method 'OnUpdateAll')`
 在 `Modules/CooldownAlert.lua` 中，`speak` 之后、`MDT_NPT.CooldownAlert = CooldownAlert` 之前插入：
 
 ```lua
--- 去抖延迟（秒）。中途开局时 Start 会先为 pull 1 排定一次播报，约 1 秒后第一次
--- 力量值轮询把已清完的波次一次性吃掉、再排定一次；没有去抖就会连播两条，
--- 而第一条已经过期（设计 §5.2）。这不是优化，是正确性要求。
+-- 去抖延迟（秒）。中途开局时 Start 会先为 pull 1 排定一次播报，随后第一次力量值
+-- 轮询把已清完的波次一次性吃掉、推进到真正的当前波并重排一次；没有去抖就会连播
+-- 两条，而第一条已经过期（设计 §5.2）。这不是优化，是正确性要求。
+--
+-- 不变量：本值必须**大于** Core.lua:307 那个 NewTicker(1.0) 的轮询周期。
+-- 否则 Start 排定的那次会在轮询有机会取消它之前就播出去，去抖形同不存在。
+-- 改轮询周期的人必须同步改这里。
+--
 -- 必须用 C_Timer.NewTimer 而不是 C_Timer.After：After 在零售客户端不返回句柄，
--- 取消不了，去抖会静默失效（Core.lua:292 的 NewTicker 同理才拿得到 :Cancel()）。
-local ANNOUNCE_DELAY = 0.75
+-- 取消不了，去抖会静默失效（Core.lua 的 NewTicker 同理才拿得到 :Cancel()）。
+local ANNOUNCE_DELAY = 1.25
 
 local lastKey
 local pending
@@ -1010,7 +1026,7 @@ local function cancelPending()
 end
 
 ---读开关并输出。去抖定时器与 SpeakNow 共用这一份实现，两条入口不会走偏。
----开关在**播出时**读取，而不是排定时——用户在 0.75 秒窗口内关掉语音应当立刻生效。
+---开关在**播出时**读取，而不是排定时——用户在去抖窗口内关掉语音应当立刻生效。
 ---@return string|nil 实际播报的文本；没有内容时为 nil
 local function fire(uid, pullIndex)
   local db = MDT_NPT:GetDB()
@@ -1085,7 +1101,7 @@ Hooks the single UpdateAll fan-out point, so scenario advances and every
 manual mark/skip/revert route through one dedupe key of
 presetUID#pullIndex.
 
-The 0.75s debounce is correctness, not polish. A mid-key Start announces
+The 1.25s debounce is correctness, not polish. A mid-key Start announces
 pull 1, then the first forces poll swallows the already-cleared waves and
 announces the real pull -- two callouts a second apart, the first stale.
 Re-arming on each advance collapses that to one, and the spec locks it.
@@ -1306,8 +1322,6 @@ local function ensureFrame()
 
   local color = Theme.colors.accent
   text:SetTextColor(color[1], color[2], color[3], 1)
-  text:SetShadowColor(0, 0, 0, 1)
-  text:SetShadowOffset(1, -1)
 
   -- 动画组建在 FontString 上：Alpha 动画对文字区是明确定义的。
   anim = text:CreateAnimationGroup()
@@ -1753,7 +1767,7 @@ Expected: 听到的顺序 = 从左到右扫过图标的顺序（嗜血 → 药�
 - [ ] **Step 6: 验证真实波次推进**
 
 打完第 1 波，等波次号跳到 2。
-Expected: 约 0.75 秒后播出第 2 波的计划；同一波内不重复播
+Expected: 约 1.25 秒后播出第 2 波的计划；同一波内不重复播
 
 - [ ] **Step 7: 验证中途开局只播一条**（设计 §5.2 的回归）
 

@@ -100,21 +100,33 @@ Core.lua  MDT_NPT:UpdateAll()                     ← 唯一新增挂钩，1 行
 
 ### 5.2 去抖定时器（必需，非优化）
 
-`ANNOUNCE_DELAY = 0.75` 秒，可取消。
+`ANNOUNCE_DELAY = 1.25` 秒，可取消。
 
-**它修的是一个具体的 bug**：中途开始追踪会连播两次。`Start()` 先为 pull 1 触发一次
-`UpdateAll()`，约 1 秒后第一次力量值轮询把已完成的波次一次性吃掉、再触发一次
-`UpdateAll()`——于是先播一条过期的 pull 1 提醒，紧接着播真正的那条。
+**不变量：本值必须大于 `Core.lua:307` 那个 `C_Timer.NewTicker(1.0)` 的轮询周期。**
+`Start()` 先建轮询 ticker、随后才调 `UpdateAll()`，所以中途开局时 Start 排定的
+pull 1 播报必须活到 t=1.0s 的轮询来取消它；否则它会在轮询之前就播出去，去抖
+形同不存在。旧值 0.75 正是这个 bug（0.75 < 1.0），中途开局照样双播。改轮询
+周期的人必须同步改这里。
 
-加去抖后：`Start` 为 pull 1 排定定时器；t≈1.0s 的轮询推进到 pull k+1 并重排定时器
-（取消 pull 1 那次）；t≈1.75s 只播出 pull k+1。全程一条。
+**它修的是一个具体的 bug**：没有去抖时，中途开始追踪会连播两次。`Start()` 先为
+pull 1 触发一次 `UpdateAll()`，约 1 秒后第一次力量值轮询把已完成的波次一次性
+吃掉、推进到真正的当前波（pull k+1），再触发一次 `UpdateAll()`。
 
-正常开局（钥匙刚开、还没有力量值增量）：t=0 排定 pull 1，t=0.75s 播出，
-t=1.0s 的轮询无增量、不重排。行为正确。
+加去抖后（中途开局）：t=0 `Start` 为 pull 1 排定定时器（到期 t=1.25）；t=1.0s
+的轮询推进到 pull k+1，取消 pull 1 那次并重排；t≈2.25s 只播出 pull k+1。
+全程一条。
 
-常规推进：pull N 完成 → 0.75 秒后播 pull N+1。对"下一波来临之前"这个语义无影响。
+正常开局（钥匙刚开、还没有力量值增量）：t=0 排定 pull 1，t=1.0s 的轮询无增量、
+不重排，t=1.25s 播出 pull 1。行为正确。
+
+常规推进：pull N 完成 → 1.25 秒后播 pull N+1。对"下一波来临之前"这个语义无影响。
 
 `Reset()` 必须同时取消待定定时器。
+
+**考虑过并否决的替代方案**：在 `Start()` 里同步消费一次力量值，让中途开局根本
+不排定过期的 pull 1（这样 0.75 秒本可以保留）。否决理由：它依赖 scenario
+criteria 在 `CHALLENGE_MODE_START` 时已经填充完毕，而这没有保证；且它改变的是
+整个插件的 `Start()` 行为，而不是本功能自己的行为。
 
 ## 6. 播报内容
 
@@ -250,8 +262,16 @@ fs:SetFont(file, FONT_SIZE, FONT_FLAGS)
 
 ### 8.3 颜色与动画
 
-颜色用 `Theme.colors.accent`（EUI 主题色，缺省为青绿 12/210/157），
-配 `SetShadowColor(0, 0, 0, 1)` + `SetShadowOffset(1, -1)` 保证在明亮场景上可读。
+颜色用 `Theme.colors.accent`（EUI 主题色，缺省为青绿 12/210/157），可读性由
+`SetFont` 的 `THICKOUTLINE` 描边承担。
+
+投影调用（`SetShadowColor` / `SetShadowOffset`）已移除：运行时
+`FontString:SetShadowColor` / `SetShadowOffset` **不渲染**——本机安装的三个插件
+（EllesmereUI、EllesmereUIQoL、EllesmereUIRaidFrames）各自独立记录了这一点，
+投影只有由 FontObject 携带时才会渲染。若游戏内验证发现 `THICKOUTLINE` 在明亮
+副本地板上不够可读，正确修法是换一个携带 shadow 的 FontObject，在 `SetFont`
+**之前**经 `SetFontObject` 应用（EUI 的 `PrimeFontShadow` 手法），而不是把那两行
+调用加回来。
 
 AnimationGroup 三段，`SetOrder` 1/2/3：
 
@@ -353,8 +373,9 @@ Lua 5.1 + busted 2.x 为准。
 - `C_VoiceChat.GetTtsVoices()` → `env.ttsVoices`（默认 `{{ voiceID = 1, name = "Test" }}`，可置空测回退）
 - `C_TTSSettings.GetVoiceOptionID / GetSpeechRate / GetSpeechVolume` → 读 `env.tts`
 - `Enum.TtsVoiceType = { Standard = 0 }`（并入已有的 `Enum` 表）
-- `C_Timer.After(delay, fn)` → 追加到 `env.afterTimers`，并提供 `env.fireTimers()`
-  手动触发；`NewTicker` 已有，保持不动
+- `C_Timer.After(delay, fn)` → 不返回任何值（与零售客户端一致，不可取消）；
+  `C_Timer.NewTimer(delay, fn)` → 返回可 `:Cancel()` 的句柄。两者都追加到
+  `env.timers`，并提供 `env.fireTimers()` 手动触发；`NewTicker` 已有，保持不动
 - widget mock 补 `CreateAnimationGroup()`，返回带 `CreateAnimation` / `Play` / `Stop` /
   `SetScript` 的对象，并记录 `env.animations`。`AnimationGroup` 没有 `SetOnFinished`，
   mock 也不许臆造它——只能提供真实的 `SetScript("OnFinished", fn)`

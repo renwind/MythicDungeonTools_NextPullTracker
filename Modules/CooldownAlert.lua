@@ -18,7 +18,7 @@ end
 ---12.x 的签名是 SpeakText(voiceID, text, rate, volume[, overlap])——destination
 ---参数已被移除，换成可选的 overlap。整句提醒是一次调用，不存在自我重叠，所以
 ---overlap 留默认。不包 pcall：.toc 只声明 120100，写对的调用并在 spec 里精确
----mock，比兜住一个不该发生的错误更有价值（参见 commit ee6b01a）。
+---mock，比兜住一个不该发生的错误更有价值。
 ---@return boolean spoke  false 表示没有可用语音，调用方不必重试
 function CooldownAlert.speak(text)
   if not (C_VoiceChat and C_VoiceChat.SpeakText) then
@@ -71,12 +71,17 @@ function CooldownAlert.buildText(dbChar, uid, pullIndex)
   return table.concat(parts, L["Alert List Joiner"])
 end
 
--- 去抖延迟（秒）。中途开局时 Start 会先为 pull 1 排定一次播报，约 1 秒后第一次
--- 力量值轮询把已清完的波次一次性吃掉、再排定一次；没有去抖就会连播两条，
--- 而第一条已经过期（设计 §5.2）。这不是优化，是正确性要求。
+-- 去抖延迟（秒）。中途开局时 Start 会先为 pull 1 排定一次播报，随后第一次力量值
+-- 轮询把已清完的波次一次性吃掉、推进到真正的当前波并重排一次；没有去抖就会连播
+-- 两条，而第一条已经过期（设计 §5.2）。这不是优化，是正确性要求。
+--
+-- 不变量：本值必须**大于** Core.lua:307 那个 NewTicker(1.0) 的轮询周期。
+-- 否则 Start 排定的那次会在轮询有机会取消它之前就播出去，去抖形同不存在
+-- ——0.75 曾经就是这样，中途开局照样双播。改轮询周期的人必须同步改这里。
+--
 -- 必须用 C_Timer.NewTimer 而不是 C_Timer.After：After 在零售客户端不返回句柄，
--- 取消不了，去抖会静默失效（Core.lua:292 的 NewTicker 同理才拿得到 :Cancel()）。
-local ANNOUNCE_DELAY = 0.75
+-- 取消不了，去抖会静默失效（Core.lua 的 NewTicker 同理才拿得到 :Cancel()）。
+local ANNOUNCE_DELAY = 1.25
 
 local lastKey
 local pending
@@ -87,7 +92,7 @@ local function cancelPending()
 end
 
 ---读开关并输出。去抖定时器与 SpeakNow 共用这一份实现，两条入口不会走偏。
----开关在**播出时**读取，而不是排定时——用户在 0.75 秒窗口内关掉语音应当立刻生效。
+---开关在**播出时**读取，而不是排定时——用户在去抖窗口内关掉语音应当立刻生效。
 ---@return string|nil 实际播报的文本；没有内容时为 nil
 local function fire(uid, pullIndex)
   local db = MDT_NPT:GetDB()
@@ -129,11 +134,13 @@ function CooldownAlert:OnUpdateAll()
   end)
 end
 
----清去重键并取消待定播报。Stop() 把 state 置 nil 后会经 UpdateAll 走到这里，
----所以下次开始追踪不会被上一次的键挡住。
+---清去重键、取消待定播报、收起屏幕上正在显示的提醒。Stop() 把 state 置 nil 后
+---会经 UpdateAll 走到这里，所以下次开始追踪不会被上一次的键挡住，
+---而已经淡入到一半的那条也不会挂在没有追踪的画面上继续播完。
 function CooldownAlert:Reset()
   lastKey = nil
   cancelPending()
+  if MDT_NPT.AlertText then MDT_NPT.AlertText:Hide() end
 end
 
 ---/npt alert：绕过去重与去抖，立即播报当前 NEXT 波（设计 §10）。

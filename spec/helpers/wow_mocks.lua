@@ -189,7 +189,7 @@ function M.withCooldownRuntime(fn)
       function group:IsPlaying() return self.playing end
       function group:SetScript(name, fn) self.scripts[name] = fn end
       -- 仅测试用：真实 AnimationGroup 没有 Finish。下划线前缀提醒它不是客户端 API，
-      -- 产品代码绝不可调用（参见 commit ee6b01a 关于「臆造 mock 方法」的教训）。
+      -- 产品代码绝不可调用（「臆造 mock 方法」的教训，见下文 C_Timer.After 的注释）。
       -- 只 mock 真实存在的 SetScript("OnFinished", fn)：AnimationGroup 没有
       -- SetOnFinished 方法（全机 AddOns 零命中，SetScript 形式 55 命中）。
       -- 曾经臆造过它，于是产品代码调一个不存在的方法而 spec 全绿。
@@ -231,7 +231,7 @@ function M.withCooldownRuntime(fn)
       -- 零售客户端的 After 不返回句柄，取消不了；要可取消必须用 NewTimer。
       -- 本机 AddOns 里没有任何插件捕获 After 的返回值，而 NewTimer 的句柄到处
       -- 被 :Cancel()。曾经让 After 返回句柄，于是去抖失效的 bug 在 spec 里全绿
-      -- ——和 commit ee6b01a 的臆造 mock 方法是同一类陷阱，只是发生在返回值上。
+      -- ——和本仓库臆造过 FontString:SetOutlined 是同一类陷阱，只是发生在返回值上。
       After = function(delay, fn)
         env.timers[#env.timers + 1] = { delay = delay, fn = fn }
       end,
