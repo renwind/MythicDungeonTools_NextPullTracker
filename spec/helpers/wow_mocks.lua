@@ -180,6 +180,9 @@ function M.withCooldownRuntime(fn)
     function w:RegisterForDrag(...) self.dragButtons = { ... } end
     function w:StartMoving() self.moving = true end
     function w:StopMovingOrSizing() self.moving = false end
+    function w:SetResizable(on) self.resizable = on end
+    function w:SetResizeBounds(minW, minH, maxW, maxH) self.resizeBounds = { minW, minH, maxW, maxH } end
+    function w:StartSizing(dir) self.sizing = dir end
     -- 真实 GetPoint 返回 point, relativeTo, relativePoint, xOffset, yOffset；默认取最后一次 SetPoint。
     function w:GetPoint(index)
       local p = self.points[index or #self.points]

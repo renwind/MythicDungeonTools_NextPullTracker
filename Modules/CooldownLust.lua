@@ -150,7 +150,10 @@ local function makeCell(parent)
   cell.text = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.cdText)
   -- bump the countdown 7pt above the shared cdText size (it sits under a 36px icon)
   local lf, ls, lo = cell.text:GetFont()
-  if lf then cell.text:SetFont(lf, ls + 7, lo) end
+  if lf then
+    cell.text:SetFont(lf, ls + 7, lo)
+    cell.textBase = { lf, ls + 7, lo }  -- 就绪对照窗缩放时按格边长等比换字号的基准
+  end
   cell.text:SetPoint("TOP", cell, "BOTTOM", 0, 0)
   cell.text:SetShadowColor(unpack(Theme.colors.shadow))
   cell.text:SetShadowOffset(1, -1)

@@ -158,3 +158,38 @@ describe("ReadyTracker 药水图标", function()
     end)
   end)
 end)
+
+describe("ReadyTracker 缩放", function()
+  before_each(function() mocks.reset() end)
+
+  it("右缘把手横向拖：窗宽决定格边长与字号，松手写回 db", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      tick(env)
+      local f = rt.getFrame()
+      assert.is_true(f.resizable)
+      f.grip.scripts.OnMouseDown(f.grip)
+      assert.equals("RIGHT", f.sizing)
+      f:SetSize(140, 999)  -- 真客户端在 StartSizing 期间改宽度；mock 手动设值代替
+      f.grip.scripts.OnMouseUp(f.grip)
+      assert.equals(63, f.lustCell.width)   -- (140 - 6 - 8) / 2
+      assert.equals(63, f.potionCell.width)
+      assert.equals(71, f.height)           -- 格边长 + 上下内衬
+      -- 字号随边长等比：基准 19（mock cdText 12 + 7）* 63/36 = 33.25 -> 33
+      local _, size = f.lustCell.text:GetFont()
+      assert.equals(33, size)
+      assert.equals(140, env.db.beacon.readyTrackerWidth)
+    end)
+  end)
+
+  it("建窗时按 db.beacon.readyTrackerWidth 还原并夹到边界", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      env.db.beacon.readyTrackerWidth = 999
+      tick(env)
+      local f = rt.getFrame()
+      assert.equals(240, f.width)           -- MAX_W 夹住
+      assert.equals(113, f.lustCell.width)  -- (240 - 6 - 8) / 2
+    end)
+  end)
+end)

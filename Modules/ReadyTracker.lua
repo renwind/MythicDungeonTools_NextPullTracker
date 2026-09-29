@@ -12,6 +12,7 @@ local Lust = MDT_NPT.CooldownLust
 local DEFAULT_POTION_ITEM = 241308
 
 local CELL, GAP, PAD = 36, 6, 4  -- 格子边长 / 两格间距 / 窗口内边距
+local MIN_W, MAX_W = 60, 240     -- 格边长 24..114：再小塞不下倒计时，再大抢屏幕
 
 -- 非 combo 时的边框色：与 createIconBorder 的默认黑一致，每拍直接刷回。
 local BLACK = { 0, 0, 0, 1 }
@@ -33,16 +34,37 @@ local function savePos(f)
   db.beacon.readyTrackerPos = { point, x, y }
 end
 
+-- 宽度决定一切：格边长由窗宽推出，字号随边长等比，高度跟随边长。
+-- 只支持横向缩放（"RIGHT"）：单行控件没有第二个自由度，二维拖拽只会拖出无效高度。
+local function applySize(f, width)
+  local cell = (width - GAP - PAD * 2) / 2
+  for _, c in ipairs({ f.lustCell, f.potionCell }) do
+    c:SetSize(cell, cell)
+    if c.textBase then
+      local size = math.floor(c.textBase[2] * cell / CELL + 0.5)
+      c.text:SetFont(c.textBase[1], math.max(8, size), c.textBase[3])
+    end
+  end
+  f:SetSize(width, cell + PAD * 2)
+end
+
+local function saveSize(f)
+  local db = MDT_NPT:GetDB()
+  if not (db and db.beacon) then return end
+  db.beacon.readyTrackerWidth = f:GetWidth()
+end
+
 local function ensureFrame()
   if frame then return frame end
   frame = CreateFrame("Frame", "MDTNPTReadyTracker", UIParent)
   -- HIGH 而非 FULLSCREEN_DIALOG：常驻工具窗，不该压过瞬时提醒横幅。
   frame:SetFrameStrata("HIGH")
-  frame:SetSize(CELL * 2 + GAP + PAD * 2, CELL + PAD * 2)
   -- 普通交互窗：整窗可拖，不做信标那套 Alt 点击穿透。
   frame:EnableMouse(true)
   frame:SetMovable(true)
   frame:RegisterForDrag("LeftButton")
+  frame:SetResizable(true)
+  frame:SetResizeBounds(MIN_W, 20, MAX_W, 200)
   frame.lustCell = Lust.makeCell(frame)
   frame.lustCell:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -PAD)
   frame.potionCell = Lust.makeCell(frame)
@@ -52,8 +74,28 @@ local function ensureFrame()
     self:StopMovingOrSizing()
     savePos(self)
   end)
+  -- 缩放把手：右缘细条，横向拖改宽度；它吃掉鼠标，不与整窗拖动冲突。
+  local grip = CreateFrame("Frame", nil, frame)
+  grip:SetWidth(6)
+  grip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+  grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+  grip:EnableMouse(true)
+  grip.tex = grip:CreateTexture(nil, "OVERLAY")
+  grip.tex:SetAllPoints(grip)
+  grip.tex:SetColorTexture(0.35, 0.35, 0.35, 0.5)
+  grip:SetScript("OnMouseDown", function() frame:StartSizing("RIGHT") end)
+  grip:SetScript("OnMouseUp", function()
+    frame:StopMovingOrSizing()
+    applySize(frame, frame:GetWidth())
+    saveSize(frame)
+  end)
+  frame.grip = grip
   local db = MDT_NPT:GetDB()
-  local pos = db and db.beacon and db.beacon.readyTrackerPos
+  local beacon = db and db.beacon
+  local width = beacon and beacon.readyTrackerWidth
+  if type(width) ~= "number" then width = CELL * 2 + GAP + PAD * 2 end
+  applySize(frame, math.min(math.max(width, MIN_W), MAX_W))
+  local pos = beacon and beacon.readyTrackerPos
   if pos and pos[1] then
     frame:SetPoint(pos[1], UIParent, "CENTER", pos[2] or 0, pos[3] or 0)
   else

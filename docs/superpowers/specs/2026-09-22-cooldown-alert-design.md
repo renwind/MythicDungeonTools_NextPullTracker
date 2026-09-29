@@ -581,3 +581,11 @@ Alt 点击穿透。无标题无底板，chrome-free 两格。
 **守卫**：spec 断言框上不存在 backdrop 记录器（mock 只给带 BackdropTemplate 模板的框挂
 SetBackdrop* 记录器，记录器缺席 = 产品代码没再碰背景/边框）；变异证明为把模板与
 SetBackdrop 加回去，该测试变红。
+
+## v7（2026-09-30）：就绪对照窗可调大小
+
+右缘 6px 细条把手横向拖（`StartSizing("RIGHT")`，实证于本机插件的把手模式）：
+窗宽推出格边长 `(w - GAP - 2*PAD) / 2`，倒计时字号随边长等比（基准记在
+`cell.textBase`），高度跟随边长——单行控件只给一个自由度，二维拖拽只会拖出无效高度。
+宽度存 `db.beacon.readyTrackerWidth`，建窗时还原并夹到 [60, 240]（格边长 24..113）。
+把手吃掉鼠标，不与整窗拖动冲突。
