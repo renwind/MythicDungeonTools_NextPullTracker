@@ -162,3 +162,18 @@ describe("CooldownLust 开关与渲染", function()
     end)
   end)
 end)
+
+describe("CooldownLust 行格倒计时位置", function()
+  before_each(function() mocks.reset() end)
+
+  it("行格倒计时仍在图标下方（对照窗才在上方）", function()
+    scenario(function(env, lust)
+      local row = CreateFrame("Frame", nil, nil)
+      lust:Update(row)
+      local p = row.lustFrame.text.points[1]
+      assert.equals("TOP", p[1])
+      assert.equals(row.lustFrame, p[2])
+      assert.equals("BOTTOM", p[3])
+    end)
+  end)
+end)

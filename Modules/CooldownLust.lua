@@ -137,7 +137,7 @@ local ADDON_MEDIA = "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Medi
 local RING_GLOW = ADDON_MEDIA .. "ring_glow.png"
 
 -- 通用 36px 格子（bg + icon + 四边描边 + 倒计时文字）：行格与就绪对照窗（v5）共用同一工厂。
-local function makeCell(parent)
+local function makeCell(parent, textAbove)
   local cell = CreateFrame("Frame", nil, parent)
   cell:SetSize(36, 36)  -- 1.5x the 24px plan icon size
   cell.bg = cell:CreateTexture(nil, "BACKGROUND")
@@ -154,7 +154,12 @@ local function makeCell(parent)
     cell.text:SetFont(lf, ls + 7, lo)
     cell.textBase = { lf, ls + 7, lo }  -- 就绪对照窗缩放时按格边长等比换字号的基准
   end
-  cell.text:SetPoint("TOP", cell, "BOTTOM", 0, 0)
+  -- 倒计时位置两处不同：对照窗在图标上方、行格在下方（用户真机反馈的观感偏好）。
+  if textAbove then
+    cell.text:SetPoint("BOTTOM", cell, "TOP", 0, 0)
+  else
+    cell.text:SetPoint("TOP", cell, "BOTTOM", 0, 0)
+  end
   cell.text:SetShadowColor(unpack(Theme.colors.shadow))
   cell.text:SetShadowOffset(1, -1)
   return cell

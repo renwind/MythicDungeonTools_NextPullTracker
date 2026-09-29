@@ -275,3 +275,21 @@ describe("ReadyTracker 点击穿透", function()
     end)
   end)
 end)
+
+describe("ReadyTracker 倒计时位置", function()
+  before_each(function() mocks.reset() end)
+
+  it("对照窗的倒计时锚在图标上方（行格保持下方）", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      tick(env)
+      local f = rt.getFrame()
+      for _, cell in ipairs({ f.lustCell, f.potionCell }) do
+        local p = cell.text.points[1]
+        assert.equals("BOTTOM", p[1])
+        assert.equals(cell, p[2])
+        assert.equals("TOP", p[3])
+      end
+    end)
+  end)
+end)
