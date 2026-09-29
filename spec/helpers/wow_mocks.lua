@@ -150,9 +150,24 @@ function M.withCooldownRuntime(fn)
     function w:SetShadowColor(...) self.shadowColor = { ... } end
     function w:SetShadowOffset(...) self.shadowOffset = { ... } end
     function w:SetColorTexture(...) self.color = { ... } end
-    function w:SetTexture(texture) self.texture = texture end
+    -- 变参一并记录：遮罩贴图靠 SetTexture(path, "CLAMPTOBLACKADDITIVE", ...) 的包裹模式生效。
+    function w:SetTexture(texture, horizWrap, vertWrap)
+      self.texture = texture
+      self.textureArgs = { texture, horizWrap, vertWrap }
+    end
     function w:SetTexCoord(...) self.texCoord = { ... } end
     function w:SetVertexColor(...) self.vertexColor = { ... } end
+    -- 真实 Texture 的遮罩挂接 API：AddMaskTexture / RemoveMaskTexture。
+    function w:AddMaskTexture(mask)
+      self.maskList = self.maskList or {}
+      self.maskList[#self.maskList + 1] = mask
+    end
+    function w:RemoveMaskTexture(mask)
+      self.maskList = self.maskList or {}
+      for i, m in ipairs(self.maskList) do
+        if m == mask then table.remove(self.maskList, i); break end
+      end
+    end
     function w:SetAtlas(atlas) self.atlas = atlas end
     function w:SetAlpha(alpha) self.alpha = alpha end
     function w:SetScript(name, callback) self.scripts[name] = callback end
@@ -164,6 +179,13 @@ function M.withCooldownRuntime(fn)
       local region = widget("Texture", self, drawLayer)
       self.regions[#self.regions + 1] = region
       return region
+    end
+    -- 遮罩区域与 Texture 共用 widget：它需要的 SetTexture/SetAllPoints/Show/Hide/SetSize 全在上面。
+    function w:CreateMaskTexture()
+      local mask = widget("MaskTexture", self)
+      self.masks = self.masks or {}
+      self.masks[#self.masks + 1] = mask
+      return mask
     end
     -- 有意不区分 kind：真实客户端里 SetJustifyH/V、SetWordWrap 只属于 FontString，
     -- SetFrameStrata 只属于 Frame。沿用本文件既有的「一个通用 widget」做法
@@ -182,6 +204,10 @@ function M.withCooldownRuntime(fn)
         function a:SetFromAlpha(v) self.from = v end
         function a:SetToAlpha(v) self.to = v end
         function a:SetDuration(d) self.duration = d end
+        -- Scale 动画（AlertBanner v3 的弹出）：与 Alpha 记录器同风格。
+        function a:SetOrigin(point, x, y) self.origin = { point, x, y } end
+        function a:SetFromScale(x, y) self.fromScale = { x, y } end
+        function a:SetToScale(x, y) self.toScale = { x, y } end
         self.animations[#self.animations + 1] = a
         return a
       end
@@ -245,7 +271,19 @@ function M.withCooldownRuntime(fn)
     _G.GetTime = function() return env.time end
     _G.GetPhysicalScreenSize = function() return 1920, 1080 end
     _G.IsControlKeyDown = function() return false end
-    _G.CreateFrame = function(kind, _, parent) return widget(kind, parent) end
+    _G.CreateFrame = function(kind, _, parent, template)
+      local w = widget(kind, parent)
+      -- 零售客户端只有 BackdropTemplate 框才有 SetBackdrop*；mock 同样按模板挂。
+      if type(template) == "string" and template:find("BackdropTemplate", 1, true) then
+        function w:SetBackdrop(t)
+          self.backdrop = t
+          self.backdropCalls = (self.backdropCalls or 0) + 1
+        end
+        function w:SetBackdropColor(...) self.backdropColor = { ... } end
+        function w:SetBackdropBorderColor(...) self.backdropBorderColor = { ... } end
+      end
+      return w
+    end
     _G.PlaySoundFile = function(path, channel)
       env.played[#env.played + 1] = { path = path, channel = channel }
     end

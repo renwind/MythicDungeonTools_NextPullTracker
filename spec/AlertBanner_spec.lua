@@ -2,21 +2,32 @@ local mocks = require("wow_mocks")
 
 local LABEL_SIZE = 28
 local ICON_SIZE  = 44
+local GLOW_SIZE  = ICON_SIZE * 1.5
+local PAD, GAP, ICON_GAP = 10, 12, 8
+-- mock 的 GetStringWidth 每字符 12px，"Next Pull" 9 字符 = 108
+local LABEL_W = 108
 
--- 动画组建在 Frame 上，所以 group.owner 就是框体本身；标签与图标都是它的 region
--- （mock 的 CreateFontString / CreateTexture 会追加到 frame.regions），
--- 顺序即创建顺序：标签在前，三个图标槽在后。
+local MEDIA       = "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Media\\"
+local CIRCLE_MASK = MEDIA .. "circle_mask.png"
+local RING_GLOW   = MEDIA .. "ring_glow.png"
+
+-- 动画组建在底板上，所以 group.owner 就是底板；标签、辉光、图标、遮罩都是它的
+-- region（mock 的 CreateFontString / CreateTexture / CreateMaskTexture 会分别追加到
+-- frame.regions / frame.masks）。辉光靠贴图路径识别，其余 Texture 即图标槽。
 local function parts(env)
-  local frame = env.animations[1].owner
-  local label, icons = nil, {}
-  for _, r in ipairs(frame.regions) do
+  local plate = env.animations[1].owner
+  local label, icons, glows = nil, {}, {}
+  for _, r in ipairs(plate.regions) do
     if r.kind == "FontString" then label = r
-    elseif r.kind == "Texture" then icons[#icons + 1] = r end
+    elseif r.kind == "Texture" then
+      if r.texture == RING_GLOW then glows[#glows + 1] = r
+      else icons[#icons + 1] = r end
+    end
   end
-  return frame, label, icons, env.animations[1]
+  return plate, label, icons, glows, env.animations[1]
 end
 
-describe("AlertBanner 屏幕中部图标横幅", function()
+describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标）", function()
   before_each(function() mocks.reset() end)
 
   local function scenario(fn)
@@ -27,17 +38,20 @@ describe("AlertBanner 屏幕中部图标横幅", function()
     end)
   end
 
-  it("Show 显示标签与一个图标、显示框体并播放动画", function()
+  it("Show 显示标签与一个图标、显示底板并播放动画", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
-      local frame, label, icons, group = parts(env)
-      assert.is_true(frame.shown)
+      local plate, label, icons, glows, group = parts(env)
+      assert.is_true(plate.shown)
       -- mock 的 L 是恒等表，所以标签文本就是键名本身
       assert.equals("Next Pull", label.text)
       assert.is_true(icons[1].shown)
       assert.equals("spell:2825", icons[1].texture)
+      assert.is_true(glows[1].shown)
       assert.is_false(icons[2].shown)
       assert.is_false(icons[3].shown)
+      assert.is_false(glows[2].shown)
+      assert.is_false(glows[3].shown)
       assert.equals(1, group.plays)
     end)
   end)
@@ -58,12 +72,12 @@ describe("AlertBanner 屏幕中部图标横幅", function()
   it("图标多于 MAX_ICONS 时截断，不溢出布局", function()
     scenario(function(env, banner)
       banner:Show({ "a", "b", "c", "d" })
-      local frame, _, icons = parts(env)
+      local plate, _, icons = parts(env)
       assert.equals(3, #icons)
       assert.is_true(icons[3].shown)
       assert.equals("c", icons[3].texture)
-      -- 整行宽度按 3 个图标算：108(标签) + 10 + 3*44 + 2*8
-      assert.equals(266, frame.width)
+      -- 底板宽度按 3 个图标算：20(内衬) + 108(标签) + 12 + 3*44 + 2*8
+      assert.equals(288, plate.width)
     end)
   end)
 
@@ -75,18 +89,34 @@ describe("AlertBanner 屏幕中部图标横幅", function()
     end)
   end)
 
-  it("整行水平居中：宽度与各元素偏移按标签实测宽度算出", function()
+  it("底板尺寸按布局公式算：n=1/2/3", function()
+    scenario(function(env, banner)
+      banner:Show({ "a" })
+      local plate = parts(env)
+      assert.equals(PAD * 2 + LABEL_W + GAP + ICON_SIZE, plate.width)
+      assert.equals(PAD * 2 + ICON_SIZE, plate.height)
+      banner:Show({ "a", "b" })
+      assert.equals(PAD * 2 + LABEL_W + GAP + 2 * ICON_SIZE + ICON_GAP, plate.width)
+      banner:Show({ "a", "b", "c" })
+      assert.equals(PAD * 2 + LABEL_W + GAP + 3 * ICON_SIZE + 2 * ICON_GAP, plate.width)
+      assert.equals(288, plate.width)
+      assert.equals(64, plate.height)
+    end)
+  end)
+
+  it("底板内左起排版：标签在左内衬处，图标依次右排", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825", "item:241308", "spell:114050" })
-      local frame, label, icons = parts(env)
-      -- mock 的 GetStringWidth 是每字符 12px，"Next Pull" 9 字符 = 108
-      assert.equals(108, label:GetStringWidth())
-      assert.equals(266, frame.width)
-      assert.equals(ICON_SIZE, frame.height)
+      local plate, label, icons = parts(env)
+      assert.equals(LABEL_W, label:GetStringWidth())
       -- SetPoint 的实参被 mock 记成 points[i] = { point, relativeTo, relativePoint, x, y }
-      assert.equals(-133, label.points[1][4])                 -- -266/2
-      assert.equals(-15, icons[1].points[1][4])               -- -133 + 108 + 10
-      assert.equals(-15 + ICON_SIZE + 8, icons[2].points[1][4])
+      assert.equals("LEFT", label.points[1][1])
+      assert.same(plate, label.points[1][2])
+      assert.equals(PAD, label.points[1][4])
+      assert.equals(0, label.points[1][5])
+      assert.equals(PAD + LABEL_W + GAP, icons[1].points[1][4])
+      assert.equals(PAD + LABEL_W + GAP + ICON_SIZE + ICON_GAP, icons[2].points[1][4])
+      assert.equals(PAD + LABEL_W + GAP + 2 * (ICON_SIZE + ICON_GAP), icons[3].points[1][4])
     end)
   end)
 
@@ -94,7 +124,7 @@ describe("AlertBanner 屏幕中部图标横幅", function()
     scenario(function(env, banner)
       banner:Show({ "a" })
       banner:Show({ "b" })
-      local _, _, icons, group = parts(env)
+      local _, _, icons, _, group = parts(env)
       assert.equals(1, #env.animations)          -- 复用同一个动画组
       assert.equals(1, group.stops)
       assert.equals(2, group.plays)
@@ -102,21 +132,21 @@ describe("AlertBanner 屏幕中部图标横幅", function()
     end)
   end)
 
-  it("动画播完后隐藏框体", function()
+  it("动画播完后隐藏底板", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
-      local frame, _, _, group = parts(env)
+      local plate, _, _, _, group = parts(env)
       group:_testFinish()
-      assert.is_false(frame.shown)
+      assert.is_false(plate.shown)
     end)
   end)
 
   it("Hide 停止动画并隐藏", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
-      local frame, _, _, group = parts(env)
+      local plate, _, _, _, group = parts(env)
       banner:Hide()
-      assert.is_false(frame.shown)
+      assert.is_false(plate.shown)
       assert.equals(1, group.stops)
     end)
   end)
@@ -154,34 +184,114 @@ describe("AlertBanner 屏幕中部图标横幅", function()
     end)
   end)
 
-  it("框体不拦截鼠标，层级设为 FULLSCREEN_DIALOG", function()
+  it("底板不拦截鼠标，层级设为 FULLSCREEN_DIALOG", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
-      local frame = parts(env)
-      assert.is_false(frame.mouseEnabled)
-      assert.equals("FULLSCREEN_DIALOG", frame.strata)
+      local plate = parts(env)
+      assert.is_false(plate.mouseEnabled)
+      assert.equals("FULLSCREEN_DIALOG", plate.strata)
     end)
   end)
 
-  it("三段动画：淡入 / 停留 / 淡出", function()
+  it("SetBackdrop 恰好一次，用两张实测过的 Tooltip 贴图，黑底 0.8", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
-      local _, _, _, group = parts(env)
-      local anims = group.animations
-      assert.equals(3, #anims)
-      assert.equals(1, anims[1].order); assert.equals(0, anims[1].from); assert.equals(1, anims[1].to)
-      assert.equals(2, anims[2].order); assert.equals(1, anims[2].from); assert.equals(1, anims[2].to)
-      assert.equals(3, anims[3].order); assert.equals(1, anims[3].from); assert.equals(0, anims[3].to)
-      assert.equals(0.15, anims[1].duration)
-      assert.equals(2.5, anims[2].duration)
-      assert.equals(0.6, anims[3].duration)
+      local plate = parts(env)
+      assert.equals(1, plate.backdropCalls)
+      assert.equals("Interface\\Tooltips\\UI-Tooltip-Background", plate.backdrop.bgFile)
+      assert.equals("Interface\\Tooltips\\UI-Tooltip-Border", plate.backdrop.edgeFile)
+      assert.same({ 0, 0, 0, 0.8 }, plate.backdropColor)
+    end)
+  end)
+
+  it("每个可见图标恰好一张圆形遮罩，用自带 circle_mask 与 CLAMPTOBLACKADDITIVE", function()
+    scenario(function(env, banner)
+      banner:Show({ "spell:2825", "item:241308", "spell:114050" })
+      local plate, _, icons = parts(env)
+      assert.equals(3, #plate.masks)
+      for i = 1, 3 do
+        assert.equals(1, #icons[i].maskList)
+        local mask = icons[i].maskList[1]
+        assert.equals(CIRCLE_MASK, mask.texture)
+        assert.equals("CLAMPTOBLACKADDITIVE", mask.textureArgs[2])
+        assert.equals("CLAMPTOBLACKADDITIVE", mask.textureArgs[3])
+        -- 遮罩盖满图标本体，圆形裁切才对得上图标边界
+        assert.same(icons[i], mask.allPoints)
+      end
+    end)
+  end)
+
+  it("辉光环用自带 ring_glow，尺寸外扩且染成主题色", function()
+    scenario(function(env, banner)
+      banner:Show({ "spell:2825" })
+      local _, _, icons, glows = parts(env)
+      local accent = MDT_NPT.Theme.colors.accent
+      for i = 1, 3 do
+        assert.equals(RING_GLOW, glows[i].texture)
+        assert.equals(GLOW_SIZE, glows[i].width)
+        assert.equals(GLOW_SIZE, glows[i].height)
+        assert.equals("OVERLAY", glows[i].layer)
+        assert.same(accent, glows[i].vertexColor)
+        -- 辉光钉在图标中心：锚点相对图标本体，挪图标即挪辉光
+        assert.equals("CENTER", glows[i].points[1][1])
+        assert.same(icons[i], glows[i].points[1][2])
+      end
+      assert.equals("ARTWORK", icons[1].layer)
+      assert.same(accent, { 12 / 255, 210 / 255, 157 / 255, 1 })
+    end)
+  end)
+
+  it("EUI 主题刷新后重新染色底板描边与辉光", function()
+    scenario(function(env, banner)
+      banner:Show({ "spell:2825" })
+      local plate, _, _, glows = parts(env)
+      assert.same(MDT_NPT.Theme.colors.accent, plate.backdropBorderColor)
+      _G.EllesmereUI = { GetAccentColor = function() return 0.2, 0.4, 0.6 end }
+      MDT_NPT.Theme.Refresh()
+      assert.same({ 0.2, 0.4, 0.6, 1 }, plate.backdropBorderColor)
+      assert.same({ 0.2, 0.4, 0.6, 1 }, glows[1].vertexColor)
+    end)
+  end)
+
+  it("三段 Alpha 动画：淡入 / 停留 / 淡出", function()
+    scenario(function(env, banner)
+      banner:Show({ "spell:2825" })
+      local _, _, _, _, group = parts(env)
+      local alphas = {}
+      for _, a in ipairs(group.animations) do
+        if a.kind == "Alpha" then alphas[#alphas + 1] = a end
+      end
+      assert.equals(3, #alphas)
+      assert.equals(1, alphas[1].order); assert.equals(0, alphas[1].from); assert.equals(1, alphas[1].to)
+      assert.equals(2, alphas[2].order); assert.equals(1, alphas[2].from); assert.equals(1, alphas[2].to)
+      assert.equals(3, alphas[3].order); assert.equals(1, alphas[3].from); assert.equals(0, alphas[3].to)
+      assert.equals(0.15, alphas[1].duration)
+      assert.equals(2.5, alphas[2].duration)
+      assert.equals(0.6, alphas[3].duration)
+    end)
+  end)
+
+  it("淡入组里带 Scale 弹出：0.9→1.0，同序同长，绕中心", function()
+    scenario(function(env, banner)
+      banner:Show({ "spell:2825" })
+      local _, _, _, _, group = parts(env)
+      local scale
+      for _, a in ipairs(group.animations) do
+        if a.kind == "Scale" then scale = a end
+      end
+      assert.is_not_nil(scale)
+      assert.equals(1, scale.order)
+      assert.equals(0.15, scale.duration)
+      assert.same({ "CENTER", 0, 0 }, scale.origin)
+      assert.same({ 0.9, 0.9 }, scale.fromScale)
+      assert.same({ 1, 1 }, scale.toScale)
     end)
   end)
 
   it("用真实的 SetScript(\"OnFinished\") 而不是臆造的 SetOnFinished", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
-      local _, _, _, group = parts(env)
+      local _, _, _, _, group = parts(env)
       -- 客户端的 AnimationGroup 没有 SetOnFinished；mock 也不提供它，
       -- 所以产品代码一旦改回那个不存在的方法，这里会因为 nil 调用直接炸。
       assert.is_function(group.scripts.OnFinished)

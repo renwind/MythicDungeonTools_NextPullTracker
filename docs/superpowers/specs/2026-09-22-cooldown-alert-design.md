@@ -481,3 +481,24 @@ Master 声道与本机所有喊话类插件一致，保证听得到；静音需�
 **模块更名**：`Modules/AlertText.lua` → `Modules/AlertBanner.lua`
 （`MDT_NPT.AlertText` → `MDT_NPT.AlertBanner`），接口从 `Show(text)` 变为
 `Show(icons)`；它现在画的是图标横幅，不是文字。
+
+## v3（2026-09-29）：背景底板与圆形发光图标
+
+游戏内实测反馈：v2 的裸文字 + 方图标一行会融进战斗背景，方形图标被误认成
+动作条按钮 / buff 图标。v3 的对策（对 §8 呈现层的取代，接口 `Show(icons)` 不变）：
+
+**一整块底板**：横幅改建于 `BackdropTemplate` 框上，`SetBackdrop` 用实测过的
+Tooltip 背景 + 边框贴图，黑底 0.8、边框染主题色——标签和图标从此读作一个物件。
+淡入 / 停留 / 淡出三段 Alpha 与一段 0.9→1.0 的 Scale 弹出同组同序，
+整块底板一体弹出、一体消失。
+
+**圆形发光图标**：每个图标槽 = 辉光贴图（OVERLAY，尺寸为图标 1.5 倍，染主题色）
++ 图标贴图（ARTWORK，经 per-slot `CreateMaskTexture` 圆形裁切）。圆环 + 外辉光
+让图标彻底告别方形动作条观感。
+
+**为什么资产是自带的白底 PNG**：暴雪的圆形遮罩 / 圆环 atlas 与 LibCustomGlow 的
+proc 类贴图（IconAlertAnts、Stealable 边框等）都是方形动作条 / proc 视觉语言，
+正是本次要摆脱的东西。改为 `tools/media/gen-glow.js`（零依赖、确定性输出）
+生成 `Media/circle_mask.png`（白色圆盘遮罩）与 `Media/ring_glow.png`
+（圆环 + 径向外辉光），运行时 `SetVertexColor` 染主题色——换色不需要重新生成资产，
+与 EUI 自带 circle_mask.tga 的做法同一路数。
