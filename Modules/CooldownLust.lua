@@ -205,19 +205,19 @@ end
 local prevReady, prevSated
 
 -- 格子刷新（图标/文字/染色）：行格与就绪对照窗（v5）共用同一份渲染语言，避免两处漂移。
+local DIM_ALPHA = 0.45  -- 倒计时期图标透明度：一眼「还没好」，红字仍是主载体
 local function paintCell(cell, readyIn, icon)
   cell.icon:SetTexture(icon or "Interface\\ICONS\\Spell_Shaman_Bloodlust")
   cell.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
+  -- 图标永远不叠状态色：真机反馈绿色染层让原画看起来像坏了（v8）。
+  cell.icon:SetVertexColor(1, 1, 1, 1)
   if readyIn > 0 then
-    cell.icon:SetVertexColor(1, 1, 1, 1)
-    cell.icon:SetAlpha(1)  -- stay opaque; the red countdown text carries the "not ready" state
+    cell.icon:SetAlpha(DIM_ALPHA)
     cell.text:SetText(formatReady(readyIn))
     local ln = Theme.colors.lustNotReady
     cell.text:SetTextColor(ln[1], ln[2], ln[3], ln[4])
   else
-    local lr = Theme.colors.lustReady
-    cell.icon:SetVertexColor(lr[1], lr[2], lr[3], lr[4])
-    cell.icon:SetAlpha(1)
+    cell.icon:SetAlpha(1)  -- 可用就是清晰原画；状态由空文字与（对照窗的）边框承担
     cell.text:SetText("")
   end
 end
