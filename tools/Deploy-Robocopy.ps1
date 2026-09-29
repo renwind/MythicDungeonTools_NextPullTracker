@@ -6,12 +6,13 @@
 
 .DESCRIPTION
     工作方式：
-      1. 检测当前 PowerShell 是否以管理员身份运行；仅当部署目标位于系统保护目录
-         （C:\Program Files 等）时才强制提权，未提权直接报错退出；
-         默认 D 盘目标普通权限即可写入。本脚本【不会】尝试自动提权后静默修改系统目录。
+      1. 检测能否写入部署目标：先看是否以管理员身份运行；未提权时对目标目录做一次
+         探针写入实测，写得进去就继续，写不进去才报错退出。不按路径模式猜「在
+         Program Files 就一定需要提权」——本机 AddOns 目录的 ACL 就允许普通用户写入。
+         本脚本【不会】尝试自动提权后静默修改系统目录。
       2. 把 AddOns 里现有的 NPT 目录完整备份到 <仓库根>\deploy\backup\<时间戳>\（只读源，不动原文件）。
       3. 用 robocopy /MIR 把仓库根镜像同步到 AddOns 目录，
-         但排除开发专属内容：tools\、.git\、deploy\ 目录，以及 .gitignore、.gitattributes、README-DEV.md 文件。
+         但排除开发专属内容：tools\、.git\、deploy\、docs\ 目录，以及 .gitignore、.gitattributes、README-DEV.md 文件。
       4. 打印 robocopy 结果摘要，并提示进游戏执行 /reload。
 
     注意（NPT 特有约束）：
@@ -33,7 +34,7 @@
     powershell -ExecutionPolicy Bypass -File .\tools\Deploy-Robocopy.ps1 -DryRun
 
 .EXAMPLE
-    # 真正部署：目标为系统目录时必须以「管理员身份」打开 PowerShell；默认 D 盘目标无需提权
+    # 真正部署：脚本会实测目标目录能否写入，写不进去才要求提权
     powershell -ExecutionPolicy Bypass -File .\tools\Deploy-Robocopy.ps1
 
 .NOTES
@@ -49,27 +50,32 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-# 语言模式自检：ConstrainedLanguage 下 .NET 方法被禁，Test-IsAdmin 会 fail-closed
+# 语言模式自检：ConstrainedLanguage 下 .NET 方法被禁，Test-IsAdmin 会 fail-closed 返回「否」。
+# 这不再致命——是否放行改由 Test-TargetWritable 的写探针决定，它只用 cmdlet，
+# 在 ConstrainedLanguage 下照常工作。
 try {
     $lm = $ExecutionContext.SessionState.LanguageMode
     if ($lm -ne 'FullLanguage') {
-        Write-Warning "当前 PowerShell 语言模式为 $lm（非 FullLanguage）：管理员检测会 fail-closed，-Execute 无法真正执行。请以管理员身份重开并确认为 FullLanguage。"
+        Write-Warning "当前 PowerShell 语言模式为 $lm（非 FullLanguage）：Test-IsAdmin 会 fail-closed 返回「否」，改由目标目录写探针决定是否继续部署。"
     }
 } catch { }
 
 # ========================= 可配置区 =========================
 # 插件在 WoW 安装目录中的真实位置（部署目标）。
 # 如果你的 WoW 装在别处，改这一行即可，或用 -TargetPath 参数临时覆盖。
-# 本机游戏实际从 D 盘加载（C 盘那份无人读取），故默认指向 D 盘。
-$DefaultTargetPath = 'D:\software\World of Warcraft\_retail_\Interface\AddOns\MythicDungeonTools_NextPullTracker'
+# 本机唯一的 WoW 安装就在 C 盘（D 盘并没有 software\World of Warcraft），父插件
+# MythicDungeonTools 与之同级，.toc 里那行 ..\MythicDungeonTools\Midnight\
+# load_midnight.xml 可以解析。该 AddOns 目录实测普通权限即可写入，无需提权。
+$DefaultTargetPath = 'C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\MythicDungeonTools_NextPullTracker'
 
 # 插件目录名（用于日志与校验）
 $AddonName = 'MythicDungeonTools_NextPullTracker'
 
 # 同步时需要排除的「开发专属」目录（相对仓库根，robocopy /XD 用绝对路径传入）
 # .qoder/.github/.tmp-npt-task：IDE/CI/临时任务目录，绝不进游戏目录
+# docs：设计与实现计划文档（docs\superpowers\），只给开发看，插件运行时不读
 # 注意：Libs 不排除——toc 运行时加载 LibStub/CallbackHandler/AceDB，镜像必须带上
-$ExcludeDirs = @('tools', '.git', 'deploy', '.qoder', '.github', '.tmp-npt-task')
+$ExcludeDirs = @('tools', '.git', 'deploy', 'docs', '.qoder', '.github', '.tmp-npt-task')
 
 # 同步时需要排除的「开发专属」文件（robocopy /XF 用绝对路径传入）
 $ExcludeFiles = @('.gitignore', '.gitattributes', 'README-DEV.md')
@@ -98,6 +104,36 @@ function Test-IsAdmin {
     catch {
         Write-Warning "无法判断当前是否具备管理员权限：$($_.Exception.Message)"
         return $false
+    }
+}
+
+function Test-TargetWritable {
+    <#
+        实测目标目录能不能写：放一个探针文件，再删掉。
+
+        为什么不用路径模式判断（'是否在 Program Files 下'）：那种猜法在本机是误报——
+        AddOns 目录的 ACL 允许普通用户写入，按模式判断会白白中止部署。实测才是事实。
+
+        另外这也是 ConstrainedLanguage 下的唯一可行路径：Test-IsAdmin 依赖
+        [Security.Principal.WindowsIdentity] 与 New-Object，两者在该语言模式下被禁，
+        必然走 catch 返回 $false。本函数只用 cmdlet，不受语言模式影响。
+
+        任何异常一律返回 $false（fail closed），与 Test-IsAdmin 同一原则：
+        宁可拒绝执行，也不要在权限不明的情况下去动系统目录。
+    #>
+    param([string]$Path)
+
+    # 不用 [guid]::NewGuid()——ConstrainedLanguage 禁 .NET 静态方法调用。
+    $probe = Join-Path $Path ('.npt-write-probe-' + $PID + '-' + (Get-Random))
+    try {
+        Set-Content -LiteralPath $probe -Value '' -ErrorAction Stop | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+    finally {
+        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -142,26 +178,30 @@ $targetItem = Get-Item -LiteralPath $TargetPath -Force
 if ($targetItem.LinkType) {
     throw @"
 部署目标已经是一个 $($targetItem.LinkType)，指向：$($targetItem.Target)
-说明你已经用 Setup-Junction.ps1 建立了目录联接 —— 联接方案下改代码即时生效，不需要再部署。
-如果确实要改回 robocopy 方案，请先以管理员身份运行 tools\Undo-Junction.ps1 解除联接。
+说明你走的是「目录联接方案」—— 联接下改代码即时生效，不需要再部署。
+如果确实要改回 robocopy 方案，请先手动解除联接（需要管理员权限）：
+    cmd /c rmdir "$TargetPath"
+rmdir 只删联接本身、不动它指向的真实目录；解除后再运行本脚本即可。
 "@
 }
 
 # ---------------------------------------------------------------
-# 1. 管理员权限检测
+# 1. 写权限检测
 # ---------------------------------------------------------------
 $isAdmin = Test-IsAdmin
 Write-Step "管理员权限: $(if ($isAdmin) { '是' } else { '否' })"
 
 if (-not $isAdmin) {
-    # 系统保护目录才需要提权；D 盘等非系统目标普通权限即可写入
-    $needsAdmin = $TargetPath -match '^[A-Za-z]:\\(Program Files|Program Files \(x86\)|Windows)\\'
     if ($DryRun) {
-        Write-Warning "当前未提权。-DryRun 只读取不写入，可以继续；目标为系统目录时真正部署必须以管理员身份运行。"
+        Write-Warning '当前未提权。-DryRun 只读取不写入，可以继续。'
     }
-    elseif ($needsAdmin) {
+    elseif (Test-TargetWritable -Path $TargetPath) {
+        Write-Warning "当前未提权，但实测目标目录可写，继续部署。"
+    }
+    else {
         Write-Host ''
-        Write-Host "【已中止】部署目标位于系统保护目录（$TargetPath），写入需要管理员权限。" -ForegroundColor Red
+        Write-Host '【已中止】当前未提权，且实测无法写入部署目标：' -ForegroundColor Red
+        Write-Host "          $TargetPath" -ForegroundColor Red
         Write-Host ''
         Write-Host '请按以下任一方式以管理员身份重开 PowerShell 后再执行本脚本：' -ForegroundColor Yellow
         Write-Host '  1) 开始菜单搜索 "PowerShell" -> 右键 -> "以管理员身份运行"'
@@ -170,12 +210,11 @@ if (-not $isAdmin) {
         Write-Host '     Start-Process powershell -Verb RunAs -ArgumentList ''-NoExit'',''-Command'',''"cd '''''$RepoRoot'''''; .\tools\Deploy-Robocopy.ps1"'''
         Write-Host ''
         Write-Host '想先不写入、只看会改哪些文件，请加 -DryRun：' -ForegroundColor Yellow
-        Write-Host "  .\tools\Deploy-Robocopy.ps1 -DryRun"
+        Write-Host '  .\tools\Deploy-Robocopy.ps1 -DryRun'
         Write-Host ''
-        throw '未以管理员身份运行且目标为系统保护目录，部署已中止。'
-    }
-    else {
-        Write-Warning "当前未提权，但目标（$TargetPath）不在系统保护目录，继续部署。"
+        Write-Host '注：本机 PowerShell 若处于 ConstrainedLanguage 模式，Test-IsAdmin 恒返回「否」，' -ForegroundColor DarkGray
+        Write-Host '    此时能否部署完全取决于上面那个写探针的结果。' -ForegroundColor DarkGray
+        throw '未提权且目标目录不可写，部署已中止。'
     }
 }
 
@@ -218,7 +257,7 @@ if ($DryRun) {
 
     Write-Host ''
     Write-Host '以上为将要发生的变更（新文件 / 覆盖 / *EXTRA 表示目标端多余文件将被 /MIR 删除）。' -ForegroundColor Yellow
-    Write-Host '确认无误后，请以【管理员身份】运行：' -ForegroundColor Yellow
+    Write-Host '确认无误后运行下面这条即可（脚本会实测写权限，只有真写不进去才要求提权）：' -ForegroundColor Yellow
     Write-Host '  .\tools\Deploy-Robocopy.ps1'
     Write-Host ''
     exit 0
