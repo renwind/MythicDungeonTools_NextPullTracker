@@ -206,8 +206,8 @@ function M.withCooldownRuntime(fn)
         function a:SetDuration(d) self.duration = d end
         -- Scale 动画（AlertBanner v3 的弹出）：与 Alpha 记录器同风格。
         function a:SetOrigin(point, x, y) self.origin = { point, x, y } end
-        function a:SetFromScale(x, y) self.fromScale = { x, y } end
-        function a:SetToScale(x, y) self.toScale = { x, y } end
+        function a:SetScaleFrom(x, y) self.fromScale = { x, y } end
+        function a:SetScaleTo(x, y) self.toScale = { x, y } end
         self.animations[#self.animations + 1] = a
         return a
       end

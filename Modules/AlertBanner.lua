@@ -97,7 +97,9 @@ local function ensureFrame()
   local ag = f:CreateAnimationGroup()
   local pop = ag:CreateAnimation("Scale")
   pop:SetOrder(1); pop:SetOrigin("CENTER", 0, 0)
-  pop:SetFromScale(0.9, 0.9); pop:SetToScale(1, 1); pop:SetDuration(FADE_IN)
+  -- 12.x 的方法名是 SetScaleFrom/SetScaleTo：旧名 SetFromScale/SetToScale 只活在
+  -- LibDFramework 之类的老库里，零售客户端上调用它们是 nil（真机炸过一轮）。
+  pop:SetScaleFrom(0.9, 0.9); pop:SetScaleTo(1, 1); pop:SetDuration(FADE_IN)
   local fadeIn = ag:CreateAnimation("Alpha")
   fadeIn:SetOrder(1); fadeIn:SetFromAlpha(0); fadeIn:SetToAlpha(1); fadeIn:SetDuration(FADE_IN)
   local hold = ag:CreateAnimation("Alpha")
