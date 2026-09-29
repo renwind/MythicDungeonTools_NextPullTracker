@@ -601,3 +601,11 @@ SetBackdrop 加回去，该测试变红。
 把手显隐（v7 补充）：灰条默认隐藏，OnEnter 显形、OnLeave 藏回；拖拽中（sizing 为真）
 OnLeave 不藏——鼠标拖拽时必然滑出把手，藏掉等于盲拖；OnMouseUp 用 IsMouseOver()
 （实证于本机插件）判断松手位置，不在把手上则藏回。
+
+## v9（2026-09-30）：对照窗点击穿透 + Alt 交互
+
+与信标同一套语言（BeaconFrame.applyClickThrough）：默认 EnableMouse(false) 全窗穿透
+（WoW 命中按矩形、与透明度无关，EnableMouse 是唯一杠杆）；MODIFIER_STATE_CHANGED
+事件重读 IsAltKeyDown()（不解析键参数，左右 Alt 都覆盖），按住才 EnableMouse(true)——
+整窗与把手一起切换，穿透态把手不能独自吃点击。松开 Alt 不会触发 OnDragStop/OnMouseUp，
+applyClickThrough 里主动 finalize()：StopMovingOrSizing + applySize + 存位置与宽度。

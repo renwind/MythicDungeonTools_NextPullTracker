@@ -59,8 +59,9 @@ local function ensureFrame()
   frame = CreateFrame("Frame", "MDTNPTReadyTracker", UIParent)
   -- HIGH 而非 FULLSCREEN_DIALOG：常驻工具窗，不该压过瞬时提醒横幅。
   frame:SetFrameStrata("HIGH")
-  -- 普通交互窗：整窗可拖，不做信标那套 Alt 点击穿透。
-  frame:EnableMouse(true)
+  -- 点击穿透是默认态：对照窗与信标一样浮在战斗画面上，空白区要把点击让给后面的怪。
+  -- Alt 按住才恢复鼠标，拖动与缩放只在那时生效（与 BeaconFrame 的 applyClickThrough 同语言）。
+  frame:EnableMouse(false)
   frame:SetMovable(true)
   frame:RegisterForDrag("LeftButton")
   frame:SetResizable(true)
@@ -74,17 +75,25 @@ local function ensureFrame()
     self:StopMovingOrSizing()
     savePos(self)
   end)
-  -- 缩放把手：右缘细条，横向拖改宽度；它吃掉鼠标，不与整窗拖动冲突。
+  -- 缩放把手：右缘细条，横向拖改宽度；鼠标跟随 Alt，穿透态不能独自吃点击。
   local grip = CreateFrame("Frame", nil, frame)
   grip:SetWidth(6)
   grip:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
   grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-  grip:EnableMouse(true)
+  grip:EnableMouse(false)
   grip.tex = grip:CreateTexture(nil, "OVERLAY")
   grip.tex:SetAllPoints(grip)
   grip.tex:SetColorTexture(0.35, 0.35, 0.35, 0.5)
   grip.tex:Hide()  -- 悬停才显形：常驻灰条在屏幕上像个异物
   local sizing
+  -- 松开 Alt 也算松手：OnDragStop/OnMouseUp 不会触发，收尾必须主动做（信标同款教训）。
+  local function finalize()
+    sizing = false
+    frame:StopMovingOrSizing()
+    applySize(frame, frame:GetWidth())
+    savePos(frame)
+    saveSize(frame)
+  end
   grip:SetScript("OnEnter", function() grip.tex:Show() end)
   grip:SetScript("OnLeave", function() if not sizing then grip.tex:Hide() end end)
   grip:SetScript("OnMouseDown", function()
@@ -92,13 +101,23 @@ local function ensureFrame()
     frame:StartSizing("RIGHT")
   end)
   grip:SetScript("OnMouseUp", function()
-    sizing = false
-    frame:StopMovingOrSizing()
-    applySize(frame, frame:GetWidth())
-    saveSize(frame)
+    finalize()
     if not grip:IsMouseOver() then grip.tex:Hide() end
   end)
   frame.grip = grip
+  local function applyClickThrough()
+    local interactive = IsAltKeyDown() and true or false
+    if not interactive and frame:IsMouseEnabled() then finalize() end
+    frame:EnableMouse(interactive)
+    grip:EnableMouse(interactive)
+    if not interactive then grip.tex:Hide() end
+  end
+  frame:RegisterEvent("MODIFIER_STATE_CHANGED")
+  frame:SetScript("OnEvent", function(_, event)
+    -- 直接重读 Alt、不解析事件的键参数：左右 Alt 都覆盖，别的键触发也能自纠正（信标同款手法）。
+    if event == "MODIFIER_STATE_CHANGED" then applyClickThrough() end
+  end)
+  applyClickThrough()
   local db = MDT_NPT:GetDB()
   local beacon = db and db.beacon
   local width = beacon and beacon.readyTrackerWidth

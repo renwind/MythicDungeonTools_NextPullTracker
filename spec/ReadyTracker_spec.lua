@@ -218,3 +218,60 @@ describe("ReadyTracker 把手显隐", function()
     end)
   end)
 end)
+
+describe("ReadyTracker 点击穿透", function()
+  before_each(function() mocks.reset() end)
+
+  it("默认穿透：整窗与把手都 EnableMouse(false)", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      tick(env)
+      local f = rt.getFrame()
+      assert.is_false(f:IsMouseEnabled())
+      assert.is_false(f.grip:IsMouseEnabled())
+      assert.same({ "MODIFIER_STATE_CHANGED" }, f.events)
+    end)
+  end)
+
+  it("Alt 按住恢复交互：整窗与把手都启用", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      tick(env)
+      local f = rt.getFrame()
+      env.alt = true
+      f.scripts.OnEvent(f, "MODIFIER_STATE_CHANGED")
+      assert.is_true(f:IsMouseEnabled())
+      assert.is_true(f.grip:IsMouseEnabled())
+    end)
+  end)
+
+  it("缩放中松开 Alt：主动收尾，宽度写回 db 并回到穿透", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      env.alt = true
+      tick(env)
+      local f = rt.getFrame()
+      f.grip.scripts.OnMouseDown(f.grip)
+      f:SetSize(140, 999)
+      env.alt = false
+      f.scripts.OnEvent(f, "MODIFIER_STATE_CHANGED")  -- 没有 OnMouseUp，靠事件收尾
+      assert.equals(140, env.db.beacon.readyTrackerWidth)
+      assert.is_false(f:IsMouseEnabled())
+      assert.is_false(f.grip.tex:IsShown())
+    end)
+  end)
+
+  it("拖动中松开 Alt：位置写回 db 并回到穿透", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      env.alt = true
+      tick(env)
+      local f = rt.getFrame()
+      f.scripts.OnDragStart(f)
+      env.alt = false
+      f.scripts.OnEvent(f, "MODIFIER_STATE_CHANGED")
+      assert.is_not_nil(env.db.beacon.readyTrackerPos)
+      assert.is_false(f:IsMouseEnabled())
+    end)
+  end)
+end)
