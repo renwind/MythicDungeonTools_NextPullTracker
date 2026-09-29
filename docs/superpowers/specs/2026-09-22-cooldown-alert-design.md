@@ -451,3 +451,33 @@ zhCN 同理载入后断言 `L["Bloodlust"] == "嗜血"` 等新增键存在。
 - 分项开关（嗜血/升腾/药水各自开关）——与计划编辑器的 use/save 语义重复
 - 距离或 ETA 判断（插件没有这个概念）
 - 播报升腾 ×N 次数
+
+## v2（2026-09-29）：内置录音与图标横幅
+
+> 本节记录 v2 对上文的取代关系。§6/§7/§8 描述的是已被取代的 v1 方案，保留作历史记录，不要照它实现。
+
+**为什么放弃客户端 TTS（§7）**：`C_VoiceChat.SpeakText` 的效果完全取决于玩家在
+系统里装了哪些 TTS 语音——中文文本配上纯英文语音念不出或直接吞掉，音色也无法
+保证；实测本机默认语音念整句提醒的效果刺耳、不像喊话。加上这个功能开发史上
+已经三次被客户端 API 的现实打脸（`SetOutlined`、`C_Timer.After` 返回值、
+`SetOnFinished`），继续把核心体验押在一个探测不了、控制不了的客户端能力上
+不值得。改为**自带录音**。
+
+**音频管线**：`tools/voice/gen.js` 用 Microsoft Edge 神经 TTS（node-edge-tts）
+离线生成 mp3（24kHz 48kbps 单声道），中英两套各 7 条，覆盖嗜血/爆发药水/升腾
+的全部非空组合；文件名 = `buildItems` 拼出的 `audioKey`（如 `lust-potion-asc.mp3`）。
+运行时 `CooldownAlert.play(audioKey)` 走 `PlaySoundFile(path, "Master")`：
+zhCN 客户端取 `Media/voice/zh-CN/`，其余语言回落 `Media/voice/en-US/`。
+Master 声道与本机所有喊话类插件一致，保证听得到；静音需求由「语音提醒」开关承担。
+新增 seed 时重跑一遍脚本即可，不需要任何运行时拼接。
+
+**为什么整句大字变成了标签 + 图标横幅（§6.3、§8）**：录音把「说了什么」固定进了
+音频文件，屏幕中部再重复一整句本地化文字是冗余的；而计划编辑器和信标图标行
+已经教会了用户「图标 = 一项冷却」。v2 的 `AlertBanner` 只显示本地化的
+`L["Next Pull"]` 标签加最多 3 个冷却图标（顺序仍由 §6.2 的 seed 逆序规则决定，
+这条规则在 `buildItems` 里继续生效），居中、三段淡入淡出——比整句文字更快扫读，
+也不再需要为「听到什么就看到什么」维护拼接模板与连接符两个 locale 键。
+
+**模块更名**：`Modules/AlertText.lua` → `Modules/AlertBanner.lua`
+（`MDT_NPT.AlertText` → `MDT_NPT.AlertBanner`），接口从 `Show(text)` 变为
+`Show(icons)`；它现在画的是图标横幅，不是文字。

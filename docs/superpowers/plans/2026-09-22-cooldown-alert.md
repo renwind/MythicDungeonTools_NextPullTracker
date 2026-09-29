@@ -1861,3 +1861,20 @@ git push
 - Task 6 的 spec 原本从 `group.owner.textRegion` 取文字区，但动画组建在 FontString 上，
   `owner` 本身就是文字区、框体是 `owner.parent` → 改用 `parts()` 统一取，
   并删掉实现里的 `frame.textRegion = text`（那会是只服务于测试的产品代码字段）
+
+## v2（2026-09-29）
+
+设计变更见 `docs/superpowers/specs/2026-09-22-cooldown-alert-design.md` 的
+「v2：内置录音与图标横幅」一节；Task 3-8 中以下内容已被取代：
+
+- `buildText(dbChar, uid, pullIndex) -> string|nil` → `buildItems(...) -> { icons, audioKey }|nil`；
+  seed 逆序规则不变，只是产物从拼接文本变成图标数组 + 音频组合键
+- `CooldownAlert.speak(text)`（C_VoiceChat.SpeakText）→ `CooldownAlert.play(audioKey)`
+  （`PlaySoundFile`，Master 声道，zh-CN/en-US 目录、其余语言回落 en-US）
+- `Modules/AlertText.lua` → `Modules/AlertBanner.lua`，`Show(text)` → `Show(icons)`：
+  本地化 `L["Next Pull"]` 标签 + 最多 3 个冷却图标，不再是整句大字
+- spec mock：`C_VoiceChat` / `C_TTSSettings` / `env.spoken` → `PlaySoundFile` / `env.played`
+- locale 键：删 `Next Pull Alert - %s`、`Alert List Joiner`，增 `Next Pull`；
+  设置面板「屏幕中部文字」文案改为描述图标横幅
+- 新增 `tools/voice/`（gen.js + package.json）与 `Media/voice/{zh-CN,en-US}/*.mp3`
+  共 14 条录音；文件名与 `audioKey` 一一对应

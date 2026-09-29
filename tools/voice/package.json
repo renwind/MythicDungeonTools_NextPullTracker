@@ -1,0 +1,8 @@
+{
+  "name": "npt-alert-voice",
+  "private": true,
+  "description": "Regenerates Media/voice/*.mp3 for the next-pull cooldown alert. Run: npm install && node gen.js",
+  "dependencies": {
+    "node-edge-tts": "^1.2.10"
+  }
+}

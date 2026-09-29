@@ -6,3 +6,4 @@
 deploy/
 *.bak-*
 .tmp-npt-task/
+node_modules/
