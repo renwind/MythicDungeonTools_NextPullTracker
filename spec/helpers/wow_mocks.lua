@@ -217,7 +217,7 @@ function M.withCooldownRuntime(fn)
       GetSpecializationInfo = function() return env.specID end,
     }
     _G.C_SpellBook = { IsSpellInSpellBook = function() return true end }
-    _G.Enum = { SpellBookSpellBank = { Player = 0 }, TtsVoiceType = { Standard = 0 } }
+    _G.Enum = { SpellBookSpellBank = { Player = 0 } }
     _G.C_Spell = {
       GetSpellTexture = function(id) return "spell:" .. id end,
       GetSpellCooldown = function() return env.cooldown end,

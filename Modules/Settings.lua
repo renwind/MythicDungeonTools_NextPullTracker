@@ -166,8 +166,8 @@ local function buildPanel()
     "alertVoice", L["Speak the next pull's planned cooldowns when the wave advances."],
     nil, true)
 
-  makeBeaconBool(category, "MDTNPT_ALERT_TEXT", L["Center Text Alert"],
-    "alertText", L["Show the same reminder as large text in the middle of the screen."],
+  makeBeaconBool(category, "MDTNPT_ALERT_TEXT", L["Center Icon Banner"],
+    "alertText", L["Show the next pull's planned cooldowns as a centered icon banner."],
     nil, true)
 
   -- Pull colors: a clickable live preview per state (dots + ring) plus a

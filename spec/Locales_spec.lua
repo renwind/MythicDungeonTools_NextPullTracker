@@ -38,7 +38,7 @@ describe("本地化完整性", function()
   it("enUS 提供横幅标签与 seed 名", function()
     mocks.withCooldownRuntime(function()
       local L = loadRealLocale("enUS")
-      assert.equals("Next pull", L["Next Pull"])
+      assert.equals("Next Pull", L["Next Pull"])
       assert.equals("Bloodlust", L["Bloodlust"])
     end)
   end)
@@ -48,10 +48,10 @@ describe("本地化完整性", function()
       local expected = {
         ["Alerts"] = "冷却提醒",
         ["Voice Alert"] = "语音提醒",
-        ["Center Text Alert"] = "屏幕中部文字",
+        ["Center Icon Banner"] = "屏幕中部图标横幅",
         ["No Planned Uses - %d"] = "第 %d 波没有规划要开的冷却",
         ["Speak the next pull's planned cooldowns when the wave advances."] = "波次推进时，语音念出下一波计划要开的爆发技能。",
-        ["Show the same reminder as large text in the middle of the screen."] = "在屏幕中部用大字显示同一条提醒。",
+        ["Show the next pull's planned cooldowns as a centered icon banner."] = "在屏幕中部用「下一波」加图标横幅显示同一条提醒。",
       }
       local en = loadRealLocale("enUS")
       for key in pairs(expected) do assert.is_not_nil(en[key]) end
