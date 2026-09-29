@@ -5,8 +5,8 @@ local Theme = MDT_NPT.Theme
 -- AlertBanner: 屏幕中部的瞬态提醒横幅（设计 §8；v2 起是「下一波」标签 + 图标，
 -- 不再是整句文字）。只负责显示，不含任何计划逻辑——播什么由 CooldownAlert 决定。
 -- 图标比句子快得多：战斗正酣时眼睛扫一下就知道该开什么。
--- v3：整行坐在一块背景底板上，图标裁成圆形并带主题色圆环辉光——
--- 裸文字行会融进战斗背景，方形裸图标则被误认成动作条按钮。
+-- v3 把图标裁成圆形并带主题色圆环辉光——方形裸图标会被误认成动作条按钮。
+-- v6 去掉背景底板与边框：真机观感底板太「UI」，辉光圆环已足够把整行聚成一个物件。
 local AlertBanner = {}
 
 local Y_OFFSET    = 120   -- 设计 §8.1：正中心会被角色模型和战斗文字压住，上移约 11% 屏高
@@ -14,10 +14,10 @@ local ICON_SIZE   = 44    -- 比信标格的 24px 大近一倍，全屏扫视才
 local GLOW_SIZE   = ICON_SIZE * 1.5   -- 辉光要比图标外扩半格，圆环才不会被裁掉
 local ICON_GAP    = 8
 local GAP         = 12    -- 标签与图标的间距大于图标间距，两组才读得开
-local PAD         = 10    -- 底板四边内衬
+local PAD         = 10    -- 横幅框四边内衬（框本身不可见，只承担排版）
 local LABEL_SIZE  = 28
 local LABEL_FLAGS = "THICKOUTLINE"
-local LABEL_H     = 28    -- 标签行高兜底值：底板高度取它与图标的较大者
+local LABEL_H     = 28    -- 标签行高兜底值：横幅框高度取它与图标的较大者
 local MAX_ICONS   = 3     -- seed 表当前只有三项；真出现第四项时截断比溢出安全
 local FADE_IN, HOLD, FADE_OUT = 0.15, 2.5, 0.6   -- 设计 §8.3：淡入 / 停留 / 淡出
 
@@ -26,14 +26,6 @@ local FADE_IN, HOLD, FADE_OUT = 0.15, 2.5, 0.6   -- 设计 §8.3：淡入 / 停�
 local ADDON_MEDIA = "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Media\\"
 local CIRCLE_MASK = ADDON_MEDIA .. "circle_mask.png"
 local RING_GLOW   = ADDON_MEDIA .. "ring_glow.png"
-
--- 表形状与全机在用插件的 SetBackdrop 调用一致（BugSack 实测）；两个贴图都是共享媒体注册过的资产。
-local BACKDROP = {
-  bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
-  edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-  tile = true, tileSize = 16, edgeSize = 16,
-  insets = { left = 4, right = 4, top = 4, bottom = 4 },
-}
 
 local frame, label, icons, glows, anim
 
@@ -46,8 +38,7 @@ local function applyStyle()
   label:SetFont(file, LABEL_SIZE, LABEL_FLAGS)
   local color = Theme.colors.accent
   label:SetTextColor(color[1], color[2], color[3], 1)
-  -- 底板描边与圆环辉光同吃主题色；EUI 换色后 Refresh 回调会整体重染。
-  frame:SetBackdropBorderColor(color[1], color[2], color[3], 1)
+  -- 圆环辉光吃主题色；EUI 换色后 Refresh 回调会整体重染。
   for i = 1, MAX_ICONS do
     glows[i]:SetVertexColor(color[1], color[2], color[3], 1)
   end
@@ -56,13 +47,10 @@ end
 local function ensureFrame()
   if frame then return frame end
 
-  -- 第四参 BackdropTemplate：零售客户端 SetBackdrop 的前提，缺了它方法根本不存在。
-  local f = CreateFrame("Frame", "MDTNPTAlertBanner", UIParent, "BackdropTemplate")
+  local f = CreateFrame("Frame", "MDTNPTAlertBanner", UIParent)
   f:SetFrameStrata("FULLSCREEN_DIALOG")
   f:SetPoint("CENTER", UIParent, "CENTER", 0, Y_OFFSET)
   f:EnableMouse(false)   -- 绝不拦截点击：提醒出现在战斗正酣的时候
-  f:SetBackdrop(BACKDROP)
-  f:SetBackdropColor(0, 0, 0, 0.8)   -- 黑底压住战斗背景；描边色留给 applyStyle
   f:Hide()
 
   local lb = f:CreateFontString(nil, "OVERLAY")
@@ -93,7 +81,7 @@ local function ensureFrame()
     glowTexs[i] = glow
   end
 
-  -- 动画组建在底板上：Alpha 淡掉整个物件，Scale 同组同序弹出——一体感的关键。
+  -- 动画组建在横幅框上：Alpha 淡掉整个物件，Scale 同组同序弹出——一体感的关键。
   local ag = f:CreateAnimationGroup()
   local pop = ag:CreateAnimation("Scale")
   pop:SetOrder(1); pop:SetOrigin("CENTER", 0, 0)
@@ -122,7 +110,7 @@ local function ensureFrame()
   return frame
 end
 
----显示横幅：底板上的标签 + 至多 MAX_ICONS 个圆形发光图标，左起排版。
+---显示横幅：标签 + 至多 MAX_ICONS 个圆形发光图标，框内左起排版。
 ---@param iconList string[] 贴图路径，顺序即显示顺序
 function AlertBanner:Show(iconList)
   if not iconList or #iconList == 0 then return end

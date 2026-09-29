@@ -568,3 +568,16 @@ GetDB、读开关——关则隐藏窗体（若有）直接返回，开则 ensur
 Show。窗口是普通交互窗（EnableMouse/SetMovable/RegisterForDrag("LeftButton")，
 OnDragStart→StartMoving，OnDragStop→StopMovingOrSizing+保存），不做信标那套
 Alt 点击穿透。无标题无底板，chrome-free 两格。
+
+## v6（2026-09-30）：横幅去底板
+
+**动机**：v3 的背景底板+描边在真机观感里太「UI」——一块不透明矩形压在战斗画面上，
+比它要解决的「融进背景」更抢眼。用户拍板：去掉背景与边框。
+
+**改动**：`AlertBanner.lua` 不再挂 `BackdropTemplate`/`SetBackdrop*`；框退化为不可见的
+排版容器（尺寸公式、左起排版、Scale+Alpha 一体动画、主题色重染全部保留）。凝聚力改由
+圆形裁切+主题色圆环辉光承担——辉光本身就把整行读成一个物件，且不与任何暴雪 UI 语言撞车。
+
+**守卫**：spec 断言框上不存在 backdrop 记录器（mock 只给带 BackdropTemplate 模板的框挂
+SetBackdrop* 记录器，记录器缺席 = 产品代码没再碰背景/边框）；变异证明为把模板与
+SetBackdrop 加回去，该测试变红。

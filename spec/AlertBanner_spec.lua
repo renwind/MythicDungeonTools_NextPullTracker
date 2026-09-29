@@ -11,7 +11,7 @@ local MEDIA       = "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Medi
 local CIRCLE_MASK = MEDIA .. "circle_mask.png"
 local RING_GLOW   = MEDIA .. "ring_glow.png"
 
--- 动画组建在底板上，所以 group.owner 就是底板；标签、辉光、图标、遮罩都是它的
+-- 动画组建在横幅框上，所以 group.owner 就是横幅框；标签、辉光、图标、遮罩都是它的
 -- region（mock 的 CreateFontString / CreateTexture / CreateMaskTexture 会分别追加到
 -- frame.regions / frame.masks）。辉光靠贴图路径识别，其余 Texture 即图标槽。
 local function parts(env)
@@ -27,7 +27,7 @@ local function parts(env)
   return plate, label, icons, glows, env.animations[1]
 end
 
-describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标）", function()
+describe("AlertBanner 屏幕中部图标横幅（v6 无底板 + 圆形发光图标）", function()
   before_each(function() mocks.reset() end)
 
   local function scenario(fn)
@@ -38,7 +38,7 @@ describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标�
     end)
   end
 
-  it("Show 显示标签与一个图标、显示底板并播放动画", function()
+  it("Show 显示标签与一个图标、显示横幅框并播放动画", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
       local plate, label, icons, glows, group = parts(env)
@@ -76,7 +76,7 @@ describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标�
       assert.equals(3, #icons)
       assert.is_true(icons[3].shown)
       assert.equals("c", icons[3].texture)
-      -- 底板宽度按 3 个图标算：20(内衬) + 108(标签) + 12 + 3*44 + 2*8
+      -- 横幅框宽度按 3 个图标算：20(内衬) + 108(标签) + 12 + 3*44 + 2*8
       assert.equals(288, plate.width)
     end)
   end)
@@ -89,7 +89,7 @@ describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标�
     end)
   end)
 
-  it("底板尺寸按布局公式算：n=1/2/3", function()
+  it("横幅框尺寸按布局公式算：n=1/2/3", function()
     scenario(function(env, banner)
       banner:Show({ "a" })
       local plate = parts(env)
@@ -104,7 +104,7 @@ describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标�
     end)
   end)
 
-  it("底板内左起排版：标签在左内衬处，图标依次右排", function()
+  it("横幅框内左起排版：标签在左内衬处，图标依次右排", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825", "item:241308", "spell:114050" })
       local plate, label, icons = parts(env)
@@ -132,7 +132,7 @@ describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标�
     end)
   end)
 
-  it("动画播完后隐藏底板", function()
+  it("动画播完后隐藏横幅框", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
       local plate, _, _, _, group = parts(env)
@@ -184,7 +184,7 @@ describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标�
     end)
   end)
 
-  it("底板不拦截鼠标，层级设为 FULLSCREEN_DIALOG", function()
+  it("横幅框不拦截鼠标，层级设为 FULLSCREEN_DIALOG", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
       local plate = parts(env)
@@ -193,14 +193,14 @@ describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标�
     end)
   end)
 
-  it("SetBackdrop 恰好一次，用两张实测过的 Tooltip 贴图，黑底 0.8", function()
+  it("无背景底板与边框：框不挂 BackdropTemplate（v6 去掉）", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
       local plate = parts(env)
-      assert.equals(1, plate.backdropCalls)
-      assert.equals("Interface\\Tooltips\\UI-Tooltip-Background", plate.backdrop.bgFile)
-      assert.equals("Interface\\Tooltips\\UI-Tooltip-Border", plate.backdrop.edgeFile)
-      assert.same({ 0, 0, 0, 0.8 }, plate.backdropColor)
+      -- mock 只给带 BackdropTemplate 模板的框挂 SetBackdrop* 记录器；
+      -- 记录器不存在 = 产品代码没再碰背景/边框。
+      assert.is_nil(plate.backdrop)
+      assert.is_nil(plate.backdropCalls)
     end)
   end)
 
@@ -241,15 +241,15 @@ describe("AlertBanner 屏幕中部图标横幅（v3 底板 + 圆形发光图标�
     end)
   end)
 
-  it("EUI 主题刷新后重新染色底板描边与辉光", function()
+  it("EUI 主题刷新后重新染色标签与辉光", function()
     scenario(function(env, banner)
       banner:Show({ "spell:2825" })
-      local plate, _, _, glows = parts(env)
-      assert.same(MDT_NPT.Theme.colors.accent, plate.backdropBorderColor)
+      local _, label, _, glows = parts(env)
+      assert.same(MDT_NPT.Theme.colors.accent, glows[1].vertexColor)
       _G.EllesmereUI = { GetAccentColor = function() return 0.2, 0.4, 0.6 end }
       MDT_NPT.Theme.Refresh()
-      assert.same({ 0.2, 0.4, 0.6, 1 }, plate.backdropBorderColor)
       assert.same({ 0.2, 0.4, 0.6, 1 }, glows[1].vertexColor)
+      assert.same({ 0.2, 0.4, 0.6, 1 }, label.color)
     end)
   end)
 

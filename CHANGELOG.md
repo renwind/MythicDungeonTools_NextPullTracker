@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format is based on 
 
 ### Changed
 
+- Next-pull alert banner v6: the backdrop plate and its border are gone — in-game the plate read as heavy UI chrome. The banner is now just the "next pull" label and the circular glowing icons on an invisible layout frame; the accent ring + glow carry the cohesion. Layout, pop/fade animation and theme recolouring are unchanged.
 - Next-pull alert banner v3 visuals: the label and cooldown icons now sit on a single dark backdrop plate with a theme-accent border, and each icon is cropped to a circle wrapped in an accent ring with a soft outer glow, so the row reads as one object and the icons no longer look like action-bar or buff buttons. The whole plate pops and fades as a unit. The circular mask and ring-glow art are white-base PNGs bundled under `Media/` (generated deterministically by `tools/media/gen-glow.js`) and tinted at runtime, so they follow the EUI accent colour.
 
 ### Added
