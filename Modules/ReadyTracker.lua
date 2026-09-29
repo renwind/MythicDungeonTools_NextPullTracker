@@ -83,11 +83,20 @@ local function ensureFrame()
   grip.tex = grip:CreateTexture(nil, "OVERLAY")
   grip.tex:SetAllPoints(grip)
   grip.tex:SetColorTexture(0.35, 0.35, 0.35, 0.5)
-  grip:SetScript("OnMouseDown", function() frame:StartSizing("RIGHT") end)
+  grip.tex:Hide()  -- 悬停才显形：常驻灰条在屏幕上像个异物
+  local sizing
+  grip:SetScript("OnEnter", function() grip.tex:Show() end)
+  grip:SetScript("OnLeave", function() if not sizing then grip.tex:Hide() end end)
+  grip:SetScript("OnMouseDown", function()
+    sizing = true
+    frame:StartSizing("RIGHT")
+  end)
   grip:SetScript("OnMouseUp", function()
+    sizing = false
     frame:StopMovingOrSizing()
     applySize(frame, frame:GetWidth())
     saveSize(frame)
+    if not grip:IsMouseOver() then grip.tex:Hide() end
   end)
   frame.grip = grip
   local db = MDT_NPT:GetDB()

@@ -193,3 +193,28 @@ describe("ReadyTracker 缩放", function()
     end)
   end)
 end)
+
+describe("ReadyTracker 把手显隐", function()
+  before_each(function() mocks.reset() end)
+
+  it("把手悬停才显形：默认藏、进入显、离开藏；拖拽中离开不藏，把手外松手藏", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      tick(env)
+      local grip = rt.getFrame().grip
+      assert.is_false(grip.tex:IsShown())
+      grip.scripts.OnEnter(grip)
+      assert.is_true(grip.tex:IsShown())
+      grip.scripts.OnLeave(grip)
+      assert.is_false(grip.tex:IsShown())
+      -- 拖拽中鼠标常滑出把手：此时藏掉等于盲拖
+      grip.scripts.OnEnter(grip)
+      grip.scripts.OnMouseDown(grip)
+      grip.scripts.OnLeave(grip)
+      assert.is_true(grip.tex:IsShown())
+      grip.mouseOver = false  -- mock：松手时鼠标已不在把手上
+      grip.scripts.OnMouseUp(grip)
+      assert.is_false(grip.tex:IsShown())
+    end)
+  end)
+end)

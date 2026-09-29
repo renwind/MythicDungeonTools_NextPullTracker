@@ -597,3 +597,7 @@ SetBackdrop 加回去，该测试变红。
 倒计时 = 半透原画（alpha 0.45）+ 红色倒计时文字。ready 的边框语义只留在对照窗的
 八条边框上（combo 染色不变），行格与对照窗共用 `Lust.paintCell`，两处一起改。
 回归测试断言 `icon.alpha` 与 `vertexColor`；变异 `DIM_ALPHA = 1` 会被测试捕获。
+
+把手显隐（v7 补充）：灰条默认隐藏，OnEnter 显形、OnLeave 藏回；拖拽中（sizing 为真）
+OnLeave 不藏——鼠标拖拽时必然滑出把手，藏掉等于盲拖；OnMouseUp 用 IsMouseOver()
+（实证于本机插件）判断松手位置，不在把手上则藏回。
