@@ -97,7 +97,7 @@ function M.withCooldownRuntime(fn)
   local saved = {}
   for _, name in ipairs(names) do saved[name] = _G[name] end
   local env = {
-    specID = 262, time = 100, tickers = {},
+    specID = 262, time = 100, alt = false, tickers = {},
     dbChar = { cooldownPotionID = 241308, cooldownPlans = {} },
     db = { beacon = { showCooldownPlan = true, alertVoice = true, alertText = true, lustAlert = true } },
     cooldown = { isEnabled = true, isActive = false, startTime = 0, duration = 0 },
@@ -175,6 +175,8 @@ function M.withCooldownRuntime(fn)
     function w:SetAlpha(alpha) self.alpha = alpha end
     function w:SetScript(name, callback) self.scripts[name] = callback end
     function w:EnableMouse(enabled) self.mouseEnabled = enabled end
+    function w:IsMouseEnabled() return self.mouseEnabled end
+    function w:RegisterEvent(event) self.events = self.events or {}; self.events[#self.events + 1] = event end
     -- 拖动四件套 + GetPoint（真实签名）：ReadyTracker 的拖动/位置持久化断言靠它们。
     function w:SetMovable(movable) self.movable = movable end
     function w:RegisterForDrag(...) self.dragButtons = { ... } end
@@ -292,6 +294,7 @@ function M.withCooldownRuntime(fn)
       end,
     }
     _G.GetTime = function() return env.time end
+    _G.IsAltKeyDown = function() return env.alt end
     _G.GetPhysicalScreenSize = function() return 1920, 1080 end
     _G.IsControlKeyDown = function() return false end
     _G.CreateFrame = function(kind, _, parent, template)
