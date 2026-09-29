@@ -71,8 +71,10 @@ local function getBloodlustID()
 end
 
 -- Seconds until bloodlust is usable/effective again (0 = ready now). Reference lustReadyIn.
+-- 第三返回值 satedLeft 只算 debuff 一条腿（无 debuff 恒为 0）：预提醒不能拿 max 后的 ready 反推。
 local function lustReadyIn()
   local r = 0
+  local satedLeft = 0
   local now = GetTime()
   local sated = hasAnyAura(SATED)
   -- 12.x secret values: any comparison on a secret number hard-errors while
@@ -80,7 +82,8 @@ local function lustReadyIn()
   if sated and sated.expirationTime then
     pcall(function()
       if not isSecret(sated.expirationTime) then
-        r = math.max(r, sated.expirationTime - now)
+        satedLeft = math.max(0, sated.expirationTime - now)
+        r = math.max(r, satedLeft)
       end
     end)
   end
@@ -95,7 +98,7 @@ local function lustReadyIn()
       end)
     end
   end
-  return r, sid
+  return r, sid, satedLeft
 end
 
 local function formatReady(r)
@@ -108,6 +111,10 @@ local function formatReady(r)
   return string.format("%d", math.ceil(r))
 end
 
+-- 白底圆环贴图，运行时 SetVertexColor 染主题色（与 AlertBanner v3 同一套资产/路数）。
+local ADDON_MEDIA = "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Media\\"
+local RING_GLOW = ADDON_MEDIA .. "ring_glow.png"
+
 local function ensureLustFrame(parent)
   if parent.lustFrame then return parent.lustFrame end
   local f = CreateFrame("Frame", nil, parent)
@@ -119,6 +126,27 @@ local function ensureLustFrame(parent)
   f.icon:SetAllPoints(f)
   f.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
   createIconBorder(f)
+  -- 就绪脉冲环：36px 格外扩 ~4px、sublevel 3 盖过图标，默认隐藏，只在真就绪边沿播放。
+  f.pulse = f:CreateTexture(nil, "OVERLAY", nil, 3)
+  f.pulse:SetPoint("TOPLEFT", f, "TOPLEFT", -4, 4)
+  f.pulse:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 4, -4)
+  f.pulse:SetTexture(RING_GLOW)
+  local lr0 = Theme.colors.lustReady
+  f.pulse:SetVertexColor(lr0[1], lr0[2], lr0[3], lr0[4])
+  f.pulse:Hide()
+  -- AnimationGroup 没有 SetOnFinished，只能 SetScript("OnFinished", fn)（本机实测）。
+  local ag = f:CreateAnimationGroup()
+  -- 两次「亮 0.25s → 灭 0.75s」，orders 1-4；播完自动藏环，重触发时先 Stop 再 Play。
+  local seq = { { 0, 1, 0.25 }, { 1, 0, 0.75 }, { 0, 1, 0.25 }, { 1, 0, 0.75 } }
+  for i, s in ipairs(seq) do
+    local a = ag:CreateAnimation("Alpha")
+    a:SetOrder(i)
+    a:SetFromAlpha(s[1])
+    a:SetToAlpha(s[2])
+    a:SetDuration(s[3])
+  end
+  ag:SetScript("OnFinished", function() f.pulse:Hide() end)
+  f.pulseAnim = ag
   f.text = f:CreateFontString(nil, "OVERLAY", Theme.fonts.cdText)
   -- bump the countdown 7pt above the shared cdText size (it sits under a 36px icon)
   local lf, ls, lo = f.text:GetFont()
@@ -130,15 +158,24 @@ local function ensureLustFrame(parent)
   return f
 end
 
-local ticker
+-- 触发脉冲：停掉可能在播的上一轮再重头播，环显示出来交给 OnFinished 收尾藏回。
+local function firePulse(f)
+  if not (f and f.pulse and f.pulseAnim) then return end
+  f.pulse:Show()
+  f.pulseAnim:Stop()
+  f.pulseAnim:Play()
+end
 
--- Update the lust indicator anchored to the left end of the current-pull icon row.
-function Lust:Update(rowFrame)
-  if not rowFrame then return end
-  local f = ensureLustFrame(rowFrame)
-  f:ClearAllPoints()
-  f:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", 0, 0)
-  local ready, sid = lustReadyIn()
+-- 播报复用 CooldownAlert.play（路径解析/Master 声道不重造）；晚解引用，缺它时静默。
+local function speak(key)
+  if MDT_NPT.CooldownAlert then MDT_NPT.CooldownAlert.play(key) end
+end
+
+-- 边沿状态：nil = 未播种；可见后首次 sample 只播种，Hide() 重置回 nil 防隐藏期跨越被补播。
+local prevReady, prevSated
+
+-- 把图标/文字/染色按当前 ready 值刷新一遍（Update 与 0.5s 轮询共用）。
+local function paintLustFrame(f, ready, sid)
   local icon = sid and C_Spell.GetSpellTexture(sid) or "Interface\\ICONS\\Spell_Shaman_Bloodlust"
   f.icon:SetTexture(icon or "Interface\\ICONS\\Spell_Shaman_Bloodlust")
   f.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
@@ -154,26 +191,52 @@ function Lust:Update(rowFrame)
     f.icon:SetAlpha(1)
     f.text:SetText("")
   end
+end
+
+-- 单次采样 = 刷新画面 + 边沿检测；Update 与 0.5s 轮询共用，不新建第二个 ticker。
+local function sample(f)
+  local ready, sid, satedLeft = lustReadyIn()
+  paintLustFrame(f, ready, sid)
+
+  if prevReady == nil or prevSated == nil then
+    -- 播种：cell 刚可见时的第一次采样只记录基线，绝不触发（否则每次显示都会响）。
+    prevReady, prevSated = ready, satedLeft
+    return
+  end
+
+  -- 开关在触发时读取（与 CooldownAlert.fire() 同模式）：ADDON_LOADED 前 GetDB 可能是 nil。
+  local db = MDT_NPT:GetDB()
+  local beacon = db and db.beacon
+  local alertOn = beacon and beacon.lustAlert
+
+  -- 真就绪边沿：readyIn 从 >0 跨到 0（技能 CD 与精疲力尽都已清空），一次跨越只播一次。
+  if alertOn and prevReady > 0 and ready <= 0 then
+    speak("lust-ready")
+    firePulse(f)
+  end
+
+  -- 预提醒：仅当 sated 是约束项（satedLeft>0 且 ==ready）且从 >30 跨到 <=30；不脉冲。
+  if alertOn and satedLeft > 0 and satedLeft >= ready and prevSated > 30 and satedLeft <= 30 then
+    speak("lust-sated-soon")
+  end
+
+  prevReady, prevSated = ready, satedLeft
+end
+
+local ticker
+
+-- Update the lust indicator anchored to the left end of the current-pull icon row.
+function Lust:Update(rowFrame)
+  if not rowFrame then return end
+  local f = ensureLustFrame(rowFrame)
+  f:ClearAllPoints()
+  f:SetPoint("TOPLEFT", rowFrame, "TOPLEFT", 0, 0)
   f:Show()
+  sample(f)
   if not ticker then
     ticker = C_Timer.NewTicker(0.5, function()
       if rowFrame and rowFrame.lustFrame and rowFrame.lustFrame:IsShown() then
-        local r2, sid2 = lustReadyIn()
-        local ic = sid2 and C_Spell.GetSpellTexture(sid2) or "Interface\\ICONS\\Spell_Shaman_Bloodlust"
-        rowFrame.lustFrame.icon:SetTexture(ic or "Interface\\ICONS\\Spell_Shaman_Bloodlust")
-        rowFrame.lustFrame.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
-        if r2 > 0 then
-          rowFrame.lustFrame.icon:SetVertexColor(1, 1, 1, 1)
-          rowFrame.lustFrame.icon:SetAlpha(1)
-          rowFrame.lustFrame.text:SetText(formatReady(r2))
-          local ln = Theme.colors.lustNotReady
-          rowFrame.lustFrame.text:SetTextColor(ln[1], ln[2], ln[3], ln[4])
-        else
-          local lr = Theme.colors.lustReady
-          rowFrame.lustFrame.icon:SetVertexColor(lr[1], lr[2], lr[3], lr[4])
-          rowFrame.lustFrame.icon:SetAlpha(1)
-          rowFrame.lustFrame.text:SetText("")
-        end
+        sample(rowFrame.lustFrame)
       end
     end)
   end
@@ -181,6 +244,8 @@ end
 
 function Lust:Hide(rowFrame)
   if rowFrame and rowFrame.lustFrame then rowFrame.lustFrame:Hide() end
+  -- 回到未播种态：隐藏期间发生的就绪/预提醒跨越不该在下次显示时补播。
+  prevReady, prevSated = nil, nil
 end
 
 MDT_NPT.CooldownLust = Lust

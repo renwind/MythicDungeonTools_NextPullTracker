@@ -92,15 +92,18 @@ function M.withCooldownRuntime(fn)
     "C_SpecializationInfo", "C_SpellBook", "Enum", "C_Spell", "C_Item", "C_Timer",
     "GetTime", "GetPhysicalScreenSize", "CreateFrame", "EllesmereUI", "unpack",
     "IsControlKeyDown", "MDTNPTCooldownPlanMixin",
-    "PlaySoundFile", "UIParent", "GameFontNormalLarge", "GetLocale",
+    "PlaySoundFile", "UIParent", "GameFontNormalLarge", "GetLocale", "C_UnitAuras",
   }
   local saved = {}
   for _, name in ipairs(names) do saved[name] = _G[name] end
   local env = {
     specID = 262, time = 100, tickers = {},
     dbChar = { cooldownPotionID = 241308, cooldownPlans = {} },
-    db = { beacon = { showCooldownPlan = true, alertVoice = true, alertText = true } },
+    db = { beacon = { showCooldownPlan = true, alertVoice = true, alertText = true, lustAlert = true } },
     cooldown = { isEnabled = true, isActive = false, startTime = 0, duration = 0 },
+    -- 玩家光环（CooldownLust 的精疲力尽探测）：spellID -> aura 表，形状与
+    -- C_UnitAuras.GetPlayerAuraBySpellID 的真实返回一致（只用 .expirationTime）。
+    auras = {},
     -- 冷却提醒（设计 §12.1）
     played = {},        -- 每次 PlaySoundFile 的 {path, channel}
     shown = {},         -- 每次 AlertBanner:Show 的图标列表
@@ -247,6 +250,11 @@ function M.withCooldownRuntime(fn)
     _G.C_Spell = {
       GetSpellTexture = function(id) return "spell:" .. id end,
       GetSpellCooldown = function() return env.cooldown end,
+    }
+    -- 真实签名：C_UnitAuras.GetPlayerAuraBySpellID(id) -> aura 表（或 nil）。
+    -- 测试通过写 env.auras[id] = { expirationTime = ... } 精疲力尽 debuff 来控制。
+    _G.C_UnitAuras = {
+      GetPlayerAuraBySpellID = function(id) return env.auras[id] end,
     }
     _G.C_Item = { GetItemIconByID = function(id) return "item:" .. id end }
     _G.C_Timer = {

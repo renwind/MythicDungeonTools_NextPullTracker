@@ -170,6 +170,10 @@ local function buildPanel()
     "alertText", L["Show the next pull's planned cooldowns as a centered icon banner."],
     nil, true)
 
+  makeBeaconBool(category, "MDTNPT_ALERT_LUST", L["Bloodlust Ready Alert"],
+    "lustAlert", L["Bloodlust Ready Alert Tooltip"],
+    nil, true)
+
   -- Pull colors: a clickable live preview per state (dots + ring) plus a
   -- reset-to-defaults button, for the minimap dots and the outline around the
   -- current pull. Lives in a custom widget (see SettingsPullColors.lua); wrapped

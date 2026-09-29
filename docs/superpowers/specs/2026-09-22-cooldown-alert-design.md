@@ -502,3 +502,34 @@ proc 类贴图（IconAlertAnts、Stealable 边框等）都是方形动作条 / p
 生成 `Media/circle_mask.png`（白色圆盘遮罩）与 `Media/ring_glow.png`
 （圆环 + 径向外辉光），运行时 `SetVertexColor` 染主题色——换色不需要重新生成资产，
 与 EUI 自带 circle_mask.tga 的做法同一路数。
+
+## v4（2026-09-30）：嗜血真就绪边沿提醒与精疲力尽预提醒
+
+游戏内实测反馈：信标图标行左端的嗜血格只有一个安静的倒计时数字，副本进行中
+从来没人盯着它看——小而静的 UI 在战斗里等于不存在。v4 给它加两条主动提示
+（`Modules/CooldownLust.lua`，开关 `beacon.lustAlert`，账号级，默认开）：
+
+**真就绪边沿**：`readyIn` 从 >0 跨到 0 的那一刻——注意语义是**两条约束都清空**
+（技能 CD 与精疲力尽/心满意足族 debuff 的 max 归零，不是只 CD 转好）——播
+`lust-ready` 录音并在嗜血格上脉冲一圈 `lustReady` 色圆环（复用 v3 的
+`Media/ring_glow.png`，Alpha 0→1→0 两遍共 2s，播完自动隐藏）。一次跨越只播
+一次；停在 0 上反复采样不重播。
+
+**精疲力尽预提醒**：当 sated debuff 是约束项（`satedLeft >= cdLeft`，即
+`readyIn == satedLeft`）且剩余时间从 >30s 跨到 <=30s 时，播 `lust-sated-soon`
+一次，不脉冲——离真正可用还有半分钟，脉冲会让人误以为现在就能开。CD 是约束项
+时的同款跨越保持静默：那只是普通转CD，没有决策价值。
+
+**边沿状态**：模块级 `prevReady/prevSated`，nil = 未播种。cell 每次变为可见后的
+第一次采样只播种不触发；`Lust:Hide()` 把两者重置回 nil，隐藏期间发生的跨越
+不会被迟到的采样补播。采样收敛为单一 `sample()`：`Lust:Update` 与既有的 0.5s
+`C_Timer.NewTicker` 轮询共用（不新建第二个 ticker），所以边沿检测的分辨率是
+0.5s，与 UpdateAll 的节奏无关。
+
+**开关与播放**：`lustAlert` 在**触发时**读取（守卫模式与 `CooldownAlert.fire()`
+一致：`MDT_NPT:GetDB()` 与 `.beacon` 判 nil）；播放复用
+`MDT_NPT.CooldownAlert.play(key)`（晚解引用），路径解析、Master 声道、zh/en
+回落全部沿用 v2 的管线，不重造。
+
+**新音频**：`tools/voice/gen.js` 增加独立于组合 ORDER/mask 逻辑的 PHRASES 表，
+中英各两句（`lust-ready`、`lust-sated-soon`），嗓音与输出格式同 v2。

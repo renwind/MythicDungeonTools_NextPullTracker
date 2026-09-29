@@ -57,6 +57,9 @@ local defaultSavedVars = {
       -- that feature toggles never go char-scoped.
       alertVoice = true,
       alertText = true,
+      -- v4: bloodlust true-ready cue + exhaustion pre-warning (design v4).
+      -- Read at fire time by CooldownLust, account-wide like the two above.
+      lustAlert = true,
       -- Per-state colors for the minimap pull DOTS. {r, g, b, a}. Keys match
       -- BeaconMinimap's pull states.
       pullColors = copyPalette(Theme.pullColors),
