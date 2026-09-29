@@ -148,10 +148,10 @@ local function handleAlert()
     return
   end
   local alert = MDT_NPT.CooldownAlert
-  local text = alert and alert:SpeakNow()
+  local items = alert and alert:SpeakNow()
   -- 自动播报路径在无计划时保持静默（设计决策 3），但这条命令是给人当场验证用的，
   -- 静默会让人以为坏了，所以这里必须出声反馈。
-  if not text then
+  if not items then
     print(PREFIX..": "..MDT_NPT.L["No Planned Uses - %d"]:format(idx))
   end
 end

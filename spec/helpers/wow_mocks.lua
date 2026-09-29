@@ -92,7 +92,7 @@ function M.withCooldownRuntime(fn)
     "C_SpecializationInfo", "C_SpellBook", "Enum", "C_Spell", "C_Item", "C_Timer",
     "GetTime", "GetPhysicalScreenSize", "CreateFrame", "EllesmereUI", "unpack",
     "IsControlKeyDown", "MDTNPTCooldownPlanMixin",
-    "C_VoiceChat", "C_TTSSettings", "UIParent", "GameFontNormalLarge", "GetLocale",
+    "PlaySoundFile", "UIParent", "GameFontNormalLarge", "GetLocale",
   }
   local saved = {}
   for _, name in ipairs(names) do saved[name] = _G[name] end
@@ -102,12 +102,10 @@ function M.withCooldownRuntime(fn)
     db = { beacon = { showCooldownPlan = true, alertVoice = true, alertText = true } },
     cooldown = { isEnabled = true, isActive = false, startTime = 0, duration = 0 },
     -- 冷却提醒（设计 §12.1）
-    spoken = {},        -- 每次 SpeakText 的参数快照
-    shown = {},         -- 每次 AlertText:Show 的文本
+    played = {},        -- 每次 PlaySoundFile 的 {path, channel}
+    shown = {},         -- 每次 AlertBanner:Show 的图标列表
     timers = {},        -- C_Timer.After / NewTimer 排定的定时器
     animations = {},    -- 每个 CreateAnimationGroup 的产物
-    ttsVoices = { { voiceID = 7, name = "Test Voice" } },
-    tts = { voiceOptionID = 7, rate = 0, volume = 80 },
   }
   -- 手动触发所有未取消的 After / NewTimer 定时器；去抖断言全靠它，不依赖真实时间。
   function env.fireTimers()
@@ -143,6 +141,9 @@ function M.withCooldownRuntime(fn)
       self.textHistory[#self.textHistory + 1] = self.text
     end
     function w:GetText() return self.text end
+    -- GetStringWidth 是真实的 FontString 方法（横幅要靠它排版）。* 12 是任意但
+    -- 确定的替身宽度：每字符 12px，断言就能按字符数算出确切的像素值。
+    function w:GetStringWidth() return #tostring(self.text or "") * 12 end
     function w:SetTextColor(...) self.color = { ... } end
     function w:GetFont() return self._fontPath or "Fonts\\dummy.ttf", self._fontSize or 12, self._fontFlags or "" end
     function w:SetFont(path, size, flags) self._fontPath, self._fontSize, self._fontFlags = path, size, flags end
@@ -197,7 +198,7 @@ function M.withCooldownRuntime(fn)
         self.playing = false
         if self.scripts.OnFinished then self.scripts.OnFinished(self) end
       end
-      group.owner = self   -- 测试抓手：谁创建了这个动画组（AlertText 里是 FontString）
+      group.owner = self   -- 测试抓手：谁创建了这个动画组（AlertBanner 里是 Frame）
       env.animations[#env.animations + 1] = group
       return group
     end
@@ -245,20 +246,10 @@ function M.withCooldownRuntime(fn)
     _G.GetPhysicalScreenSize = function() return 1920, 1080 end
     _G.IsControlKeyDown = function() return false end
     _G.CreateFrame = function(kind, _, parent) return widget(kind, parent) end
-    _G.C_VoiceChat = {
-      SpeakText = function(voiceID, text, rate, volume, overlap)
-        env.spoken[#env.spoken + 1] = {
-          voiceID = voiceID, text = text, rate = rate, volume = volume, overlap = overlap,
-        }
-      end,
-      GetTtsVoices = function() return env.ttsVoices end,
-    }
-    _G.C_TTSSettings = {
-      GetVoiceOptionID = function() return env.tts.voiceOptionID end,
-      GetSpeechRate = function() return env.tts.rate end,
-      GetSpeechVolume = function() return env.tts.volume end,
-    }
-    -- AlertText 的字体回落路径会调 GameFontNormalLarge:GetFont()；不存在的话
+    _G.PlaySoundFile = function(path, channel)
+      env.played[#env.played + 1] = { path = path, channel = channel }
+    end
+    -- AlertBanner 的字体回落路径会调 GameFontNormalLarge:GetFont()；不存在的话
     -- 回落分支的断言会因为 nil 索引而假绿。
     _G.GameFontNormalLarge = { GetFont = function() return "Fonts\\blizzard.ttf", 16, "" end }
     -- Locales/*.lua 在加载期就调 GetLocale()（zhCN/ruRU/frFR 用守卫提前 return），
@@ -267,11 +258,11 @@ function M.withCooldownRuntime(fn)
     _G.GetLocale = function() return "enUS" end
     _G.UIParent = widget("Frame", nil)
     -- 桩：让 CooldownAlert_spec 只断言 env.shown，不必加载真 UI 模块。
-    -- AlertText_spec 会 loadSource 真模块覆盖掉它。这是 MDT_NPT 的字段写入，
+    -- AlertBanner_spec 会 loadSource 真模块覆盖掉它。这是 MDT_NPT 的字段写入，
     -- 不经 names 白名单恢复——安全的前提是 M.reset() 会整体重建 MDT_NPT，
     -- 与上面既有的 GetDB/GetDBChar 赋值同一模式。
-    _G.MDT_NPT.AlertText = {
-      Show = function(_, text) env.shown[#env.shown + 1] = text end,
+    _G.MDT_NPT.AlertBanner = {
+      Show = function(_, iconList) env.shown[#env.shown + 1] = iconList end,
       Hide = function() end,
     }
     _G.MDT_NPT.MDT = _G.MDT

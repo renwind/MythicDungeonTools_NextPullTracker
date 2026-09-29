@@ -19,8 +19,8 @@ L["Apply"] = "应用"
 L["Potion Not Specified"] = "未指定"
 -- Cooldown alert (design: next-pull cooldown alert)
 L["Bloodlust"] = "嗜血"
-L["Next Pull Alert - %s"] = "下一波%s"
-L["Alert List Joiner"] = "，"
+-- Banner caption; doubles as the MDTNPT_NEXT key-binding label (Settings.lua:13).
+L["Next Pull"] = "下一波"
 L["Alerts"] = "冷却提醒"
 L["Voice Alert"] = "语音提醒"
 L["Center Text Alert"] = "屏幕中部文字"

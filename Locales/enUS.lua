@@ -59,7 +59,9 @@ L["Reset"] = "Reset"
 L["Reset Position & Size"] = "Reset Position & Size"
 L["Snap the beacon back to its default location and size."] = "Snap the beacon back to its default location and size."
 L["Toggle Beacon"] = "Toggle Beacon"
-L["Next Pull"] = "Next Pull"
+-- Shared entry: this is both the MDTNPT_NEXT key-binding label (Settings.lua:13)
+-- and the alert banner's caption (Modules/AlertBanner.lua).
+L["Next Pull"] = "Next pull"
 L["Previous Pull"] = "Previous Pull"
 L["Toggle Lock"] = "Toggle Lock"
 -- Cooldown plan (design 13.3)
@@ -87,8 +89,6 @@ L["Clear Note"] = "Clear"
 L["Show note strips above the beacon for the current pull and its annotated mobs."] = "Show note strips above the beacon for the current pull and its annotated mobs."
 -- Cooldown alert (design: next-pull cooldown alert)
 L["Bloodlust"] = "Bloodlust"
-L["Next Pull Alert - %s"] = "Next pull %s"
-L["Alert List Joiner"] = ", "
 L["Alerts"] = "Alerts"
 L["Voice Alert"] = "Voice Alert"
 L["Center Text Alert"] = "Center Text Alert"
