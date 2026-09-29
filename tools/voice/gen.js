@@ -13,18 +13,21 @@ const SETS = [
   {
     dir: 'zh-CN',
     voice: 'zh-CN-XiaoyiNeural',
-    joiner: '，',
-    parts: { lust: '下一波嗜血', potion: '下一波爆发药水', asc: '下一波升腾' },
+    prefix: '下一波',
+    names: { lust: '嗜血', potion: '爆发药水', asc: '升腾' },
+    join: (arr) => arr.join('加'),
   },
   {
     dir: 'en-US',
     voice: 'en-US-AriaNeural',
-    joiner: ', ',
-    parts: {
-      lust: 'Next pull Bloodlust',
-      potion: 'Next pull Burst Potion',
-      asc: 'Next pull Ascendance',
+    prefix: 'Next pull: ',
+    names: {
+      lust: 'Bloodlust',
+      potion: 'Burst Potion',
+      asc: 'Ascendance',
     },
+    join: (arr) =>
+      arr.length === 1 ? arr[0] : arr.slice(0, -1).join(', ') + ' and ' + arr[arr.length - 1],
   },
 ];
 
@@ -58,7 +61,7 @@ function combos() {
     const dir = path.join(OUT, set.dir);
     fs.mkdirSync(dir, { recursive: true });
     for (const tags of combos()) {
-      const sentence = tags.map((t) => set.parts[t]).join(set.joiner);
+      const sentence = set.prefix + set.join(tags.map((t) => set.names[t]));
       const key = tags.join('-');
       const file = path.join(dir, key + '.mp3');
       const tts = new EdgeTTS({ voice: set.voice, lang: set.dir, outputFormat: FORMAT });
