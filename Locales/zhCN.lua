@@ -28,6 +28,8 @@ L["Speak the next pull's planned cooldowns when the wave advances."] = "波次�
 L["Show the next pull's planned cooldowns as a centered icon banner."] = "在屏幕中部用「下一波」加图标横幅显示同一条提醒。"
 L["Bloodlust Ready Alert"] = "嗜血就绪提醒"
 L["Bloodlust Ready Alert Tooltip"] = "嗜血真正可用（技能 CD 与精疲力尽都结束）的瞬间语音提示并脉冲信标格；精疲力尽结束前 30 秒语音预提醒。"
+L["Ready Tracker Window"] = "就绪对照窗"
+L["Ready Tracker Window Tooltip"] = "可拖动的小窗，并排对照嗜血与爆发药水的就绪倒计时；两者都可用时边框染就绪色（combo 窗口）。"
 L["No Planned Uses - %d"] = "第 %d 波没有规划要开的冷却"
 -- NPC notes (design: NpcNotes 8)
 L["Show Notes"] = "显示注释"

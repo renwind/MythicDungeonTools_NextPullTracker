@@ -175,6 +175,17 @@ function M.withCooldownRuntime(fn)
     function w:SetAlpha(alpha) self.alpha = alpha end
     function w:SetScript(name, callback) self.scripts[name] = callback end
     function w:EnableMouse(enabled) self.mouseEnabled = enabled end
+    -- 拖动四件套 + GetPoint（真实签名）：ReadyTracker 的拖动/位置持久化断言靠它们。
+    function w:SetMovable(movable) self.movable = movable end
+    function w:RegisterForDrag(...) self.dragButtons = { ... } end
+    function w:StartMoving() self.moving = true end
+    function w:StopMovingOrSizing() self.moving = false end
+    -- 真实 GetPoint 返回 point, relativeTo, relativePoint, xOffset, yOffset；默认取最后一次 SetPoint。
+    function w:GetPoint(index)
+      local p = self.points[index or #self.points]
+      if not p then return nil end
+      return p[1], p[2], p[3], p[4], p[5]
+    end
     function w:SetCooldown(start, duration) self.cooldown = { start, duration } end
     function w:SetHideCountdownNumbers(hide) self.hideCountdownNumbers = hide end
     function w:Clear() self.cooldown = nil end

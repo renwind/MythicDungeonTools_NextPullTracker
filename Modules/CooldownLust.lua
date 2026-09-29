@@ -101,6 +101,7 @@ local function lustReadyIn()
   return r, sid, satedLeft
 end
 
+-- 就绪秒数 -> 短文本（90 -> "1.5m"，20 -> "20"）；行格与就绪对照窗（v5）共用。
 local function formatReady(r)
   if r > 60 then
     -- round to nearest 0.5m (30s): 90s -> 1.5m, 100s -> 1.5m, 140s -> 2.5m
@@ -111,21 +112,54 @@ local function formatReady(r)
   return string.format("%d", math.ceil(r))
 end
 
+-- 爆发药水 4 个 itemID 共享的使用效果法术（与 CooldownData.lua:30 SEED_TABLE 的 useEffectSpellID 一致）。
+local POTION_USE_EFFECT_SPELL = 1236616
+
+-- 爆发药水再次可用的秒数（0 = 就绪）；CD 探测与上面嗜血 CD 分支同一套 pcall 纪律。
+local function potionReadyIn()
+  local r = 0
+  if C_Spell and C_Spell.GetSpellCooldown then
+    local cd = C_Spell.GetSpellCooldown(POTION_USE_EFFECT_SPELL)
+    if cd and cd.isEnabled and cd.isActive then
+      local now = GetTime()
+      pcall(function()
+        if cd.duration > 2 then
+          r = math.max(r, cd.startTime + cd.duration - now)
+        end
+      end)
+    end
+  end
+  return r
+end
+
 -- 白底圆环贴图，运行时 SetVertexColor 染主题色（与 AlertBanner v3 同一套资产/路数）。
 local ADDON_MEDIA = "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Media\\"
 local RING_GLOW = ADDON_MEDIA .. "ring_glow.png"
 
+-- 通用 36px 格子（bg + icon + 四边描边 + 倒计时文字）：行格与就绪对照窗（v5）共用同一工厂。
+local function makeCell(parent)
+  local cell = CreateFrame("Frame", nil, parent)
+  cell:SetSize(36, 36)  -- 1.5x the 24px plan icon size
+  cell.bg = cell:CreateTexture(nil, "BACKGROUND")
+  cell.bg:SetAllPoints(cell)
+  cell.bg:SetColorTexture(0.06, 0.06, 0.06, 0.9)
+  cell.icon = cell:CreateTexture(nil, "ARTWORK")
+  cell.icon:SetAllPoints(cell)
+  cell.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
+  createIconBorder(cell)
+  cell.text = cell:CreateFontString(nil, "OVERLAY", Theme.fonts.cdText)
+  -- bump the countdown 7pt above the shared cdText size (it sits under a 36px icon)
+  local lf, ls, lo = cell.text:GetFont()
+  if lf then cell.text:SetFont(lf, ls + 7, lo) end
+  cell.text:SetPoint("TOP", cell, "BOTTOM", 0, 0)
+  cell.text:SetShadowColor(unpack(Theme.colors.shadow))
+  cell.text:SetShadowOffset(1, -1)
+  return cell
+end
+
 local function ensureLustFrame(parent)
   if parent.lustFrame then return parent.lustFrame end
-  local f = CreateFrame("Frame", nil, parent)
-  f:SetSize(36, 36)  -- 1.5x the 24px plan icon size
-  f.bg = f:CreateTexture(nil, "BACKGROUND")
-  f.bg:SetAllPoints(f)
-  f.bg:SetColorTexture(0.06, 0.06, 0.06, 0.9)
-  f.icon = f:CreateTexture(nil, "ARTWORK")
-  f.icon:SetAllPoints(f)
-  f.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
-  createIconBorder(f)
+  local f = makeCell(parent)
   -- 就绪脉冲环：36px 格外扩 ~4px、sublevel 3 盖过图标，默认隐藏，只在真就绪边沿播放。
   f.pulse = f:CreateTexture(nil, "OVERLAY", nil, 3)
   f.pulse:SetPoint("TOPLEFT", f, "TOPLEFT", -4, 4)
@@ -147,13 +181,6 @@ local function ensureLustFrame(parent)
   end
   ag:SetScript("OnFinished", function() f.pulse:Hide() end)
   f.pulseAnim = ag
-  f.text = f:CreateFontString(nil, "OVERLAY", Theme.fonts.cdText)
-  -- bump the countdown 7pt above the shared cdText size (it sits under a 36px icon)
-  local lf, ls, lo = f.text:GetFont()
-  if lf then f.text:SetFont(lf, ls + 7, lo) end
-  f.text:SetPoint("TOP", f, "BOTTOM", 0, 0)
-  f.text:SetShadowColor(unpack(Theme.colors.shadow))
-  f.text:SetShadowOffset(1, -1)
   parent.lustFrame = f
   return f
 end
@@ -174,29 +201,28 @@ end
 -- 边沿状态：nil = 未播种；可见后首次 sample 只播种，Hide() 重置回 nil 防隐藏期跨越被补播。
 local prevReady, prevSated
 
--- 把图标/文字/染色按当前 ready 值刷新一遍（Update 与 0.5s 轮询共用）。
-local function paintLustFrame(f, ready, sid)
-  local icon = sid and C_Spell.GetSpellTexture(sid) or "Interface\\ICONS\\Spell_Shaman_Bloodlust"
-  f.icon:SetTexture(icon or "Interface\\ICONS\\Spell_Shaman_Bloodlust")
-  f.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
-  if ready > 0 then
-    f.icon:SetVertexColor(1, 1, 1, 1)
-    f.icon:SetAlpha(1)  -- stay opaque; the red countdown text carries the "not ready" state
-    f.text:SetText(formatReady(ready))
+-- 格子刷新（图标/文字/染色）：行格与就绪对照窗（v5）共用同一份渲染语言，避免两处漂移。
+local function paintCell(cell, readyIn, icon)
+  cell.icon:SetTexture(icon or "Interface\\ICONS\\Spell_Shaman_Bloodlust")
+  cell.icon:SetTexCoord(0.055, 0.945, 0.055, 0.945)
+  if readyIn > 0 then
+    cell.icon:SetVertexColor(1, 1, 1, 1)
+    cell.icon:SetAlpha(1)  -- stay opaque; the red countdown text carries the "not ready" state
+    cell.text:SetText(formatReady(readyIn))
     local ln = Theme.colors.lustNotReady
-    f.text:SetTextColor(ln[1], ln[2], ln[3], ln[4])
+    cell.text:SetTextColor(ln[1], ln[2], ln[3], ln[4])
   else
     local lr = Theme.colors.lustReady
-    f.icon:SetVertexColor(lr[1], lr[2], lr[3], lr[4])
-    f.icon:SetAlpha(1)
-    f.text:SetText("")
+    cell.icon:SetVertexColor(lr[1], lr[2], lr[3], lr[4])
+    cell.icon:SetAlpha(1)
+    cell.text:SetText("")
   end
 end
 
 -- 单次采样 = 刷新画面 + 边沿检测；Update 与 0.5s 轮询共用，不新建第二个 ticker。
 local function sample(f)
   local ready, sid, satedLeft = lustReadyIn()
-  paintLustFrame(f, ready, sid)
+  paintCell(f, ready, sid and C_Spell.GetSpellTexture(sid))
 
   if prevReady == nil or prevSated == nil then
     -- 播种：cell 刚可见时的第一次采样只记录基线，绝不触发（否则每次显示都会响）。
@@ -247,5 +273,12 @@ function Lust:Hide(rowFrame)
   -- 回到未播种态：隐藏期间发生的就绪/预提醒跨越不该在下次显示时补播。
   prevReady, prevSated = nil, nil
 end
+
+-- v5 对外接口：就绪对照窗（ReadyTracker）复用格子工厂、渲染语言与两路就绪探测。
+Lust.makeCell = makeCell
+Lust.paintCell = paintCell
+Lust.lustReadyIn = lustReadyIn
+Lust.potionReadyIn = potionReadyIn
+Lust.formatReady = formatReady
 
 MDT_NPT.CooldownLust = Lust

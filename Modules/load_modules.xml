@@ -19,6 +19,7 @@
   <Script file='CooldownPlan.lua'/>
   <Script file='CooldownPlanRender.lua'/>
   <Script file='CooldownLust.lua'/>
+  <Script file='ReadyTracker.lua'/>
   <Script file='AlertBanner.lua'/>
   <Script file='CooldownAlert.lua'/>
   <Script file='CooldownPlanEditor.lua'/>

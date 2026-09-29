@@ -60,6 +60,9 @@ local defaultSavedVars = {
       -- v4: bloodlust true-ready cue + exhaustion pre-warning (design v4).
       -- Read at fire time by CooldownLust, account-wide like the two above.
       lustAlert = true,
+      -- v5: ready-tracker comparison window (design v5). Read on its own 0.5s
+      -- poll by ReadyTracker, account-wide like the toggles above.
+      readyTracker = true,
       -- Per-state colors for the minimap pull DOTS. {r, g, b, a}. Keys match
       -- BeaconMinimap's pull states.
       pullColors = copyPalette(Theme.pullColors),

@@ -533,3 +533,38 @@ proc 类贴图（IconAlertAnts、Stealable 边框等）都是方形动作条 / p
 
 **新音频**：`tools/voice/gen.js` 增加独立于组合 ORDER/mask 逻辑的 PHRASES 表，
 中英各两句（`lust-ready`、`lust-sated-soon`），嗓音与输出格式同 v2。
+
+## v5（2026-09-30）：嗜血/爆发药水就绪对照窗
+
+新模块 `Modules/ReadyTracker.lua`（开关 `beacon.readyTracker`，账号级，默认开）：
+一个独立的可拖动小窗（`MDTNPTReadyTracker`，HIGH strata），并排两格 36px 格子，
+左边嗜血、右边爆发药水，各自显示就绪倒计时；**两者同时为 0** 时八条边框一起染
+`lustReady` 色——那就是「一起开」的 combo 窗口，坦克一眼就能对比出还要等多久。
+
+**为什么是独立窗口而不是加宽信标行**：对照是*规划*动作——它发生在拉怪之前、
+读条间隙、灭团复盘时，需要一块自己常驻的屏幕位置让眼睛形成肌肉记忆；信标行是
+战斗 HUD 的一部分，跟着波次刷新走，把规划工具塞进去会让两种节奏互相干扰，而且
+非信标用户（map-only、隐藏 HUD）就永远看不到对照。位置存
+`beacon.readyTrackerPos = { point, x, y }`（拖动结束从 `GetPoint()` 写回，重建时
+恢复；默认 `CENTER, UIParent, CENTER, 0, 240`，在 +120 的提醒横幅上方），跨会话
+持久。
+
+**为什么显示剩余秒数而不是「第几波能用上」的推演**：推演需要预知未来每波的
+战斗时长，而拉怪长度根本不可知（打断失误、减员、开怪节奏全在人）；秒数是唯一
+诚实的语义，「能不能赶上下一波」留给人自己判断。
+
+**复用而非重写**：`CooldownLust` 最小重构出 `Lust.makeCell(parent)`（36px 格子
+工厂：bg/icon/四边描边/倒计时文字，`ensureLustFrame` 改为在其上加脉冲环）、
+`Lust.paintCell(cell, readyIn, icon)`（行格与对照窗共用同一份渲染语言：>0 红字
+倒计时 + 白图标，0 空字 + 就绪色图标）、并暴露 `lustReadyIn`/`formatReady` 与新增
+`potionReadyIn()`——爆发药水 4 个 itemID 共享使用效果法术 1236616（与
+`CooldownData.lua:30` 的 `useEffectSpellID` 同源），CD 探测沿用嗜血 CD 分支的
+pcall 纪律（12.x secret 数值在 tainted 执行下比较即硬错）。药水图标走
+`CooldownAlert.seedIcon` 物品分支同一条路：`dbChar.cooldownPotionID` 覆盖优先，
+默认 241308。行格行为与 v4 边沿/预提醒语义零变化。
+
+**驱动**：模块加载即懒建唯一一个 `C_Timer.NewTicker(0.5, tick)`；回调判 nil-guard
+GetDB、读开关——关则隐藏窗体（若有）直接返回，开则 ensureFrame + 双格绘制 +
+Show。窗口是普通交互窗（EnableMouse/SetMovable/RegisterForDrag("LeftButton")，
+OnDragStart→StartMoving，OnDragStop→StopMovingOrSizing+保存），不做信标那套
+Alt 点击穿透。无标题无底板，chrome-free 两格。

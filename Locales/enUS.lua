@@ -96,4 +96,6 @@ L["Speak the next pull's planned cooldowns when the wave advances."] = "Speak th
 L["Show the next pull's planned cooldowns as a centered icon banner."] = "Show the next pull's planned cooldowns as a centered icon banner."
 L["Bloodlust Ready Alert"] = "Bloodlust Ready Alert"
 L["Bloodlust Ready Alert Tooltip"] = "Speak a cue and pulse the beacon cell the moment bloodlust is truly usable (spell CD and exhaustion both cleared), and warn 30 seconds before exhaustion ends."
+L["Ready Tracker Window"] = "Ready Tracker Window"
+L["Ready Tracker Window Tooltip"] = "A small draggable window comparing bloodlust and burst-potion readiness side by side; both borders turn ready-colored when the combo window is open."
 L["No Planned Uses - %d"] = "No planned cooldown uses for pull %d"

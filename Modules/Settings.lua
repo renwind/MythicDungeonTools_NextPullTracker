@@ -174,6 +174,10 @@ local function buildPanel()
     "lustAlert", L["Bloodlust Ready Alert Tooltip"],
     nil, true)
 
+  makeBeaconBool(category, "MDTNPT_READY_TRACKER", L["Ready Tracker Window"],
+    "readyTracker", L["Ready Tracker Window Tooltip"],
+    nil, true)
+
   -- Pull colors: a clickable live preview per state (dots + ring) plus a
   -- reset-to-defaults button, for the minimap dots and the outline around the
   -- current pull. Lives in a custom widget (see SettingsPullColors.lua); wrapped
