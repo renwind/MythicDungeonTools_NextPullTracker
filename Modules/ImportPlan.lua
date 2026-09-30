@@ -33,7 +33,7 @@ function ImportPlan.parseEntrySpec(spec)
     local entry = { id = id, kind = kind, action = action }
     if usesText ~= "" then
       local uses = tonumber(usesText)
-      if not uses or uses < 1 or uses > 3 then return nil, "bad uses in token: " .. token end
+      if not uses or uses < 1 or uses > 5 then return nil, "bad uses in token: " .. token end
       if uses >= 2 then entry.uses = math.floor(uses) end
     end
     entries[#entries + 1] = entry

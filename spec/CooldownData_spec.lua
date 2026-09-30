@@ -264,20 +264,22 @@ describe("CooldownData 单波使用次数", function()
   it("sanitize 钳制越界与非整数且丢弃非数字但保留条目", function()
     scenario(function(env, data)
       local plans = {
-        [1] = plan(spellUses("use", 4)), [2] = plan(spellUses("use", 0)),
+        [1] = plan(spellUses("use", 6)), [2] = plan(spellUses("use", 0)),
         [3] = plan(spellUses("use", 2.7)), [4] = plan(spellUses("use", "x")),
+        [5] = plan(spellUses("use", 4)),
       }
       env.dbChar.cooldownPlans.a = plans
       -- sanitize 是「读哪波洗哪波」（见 matchesSeed 旁「避免清洗历史存档」注释），
-      -- 所以逐波触发读，而不是只读第 4 波就断言全部已钳制。
-      for pullIndex = 1, 4 do
+      -- 所以逐波触发读，而不是只读某一波就断言全部已钳制。
+      for pullIndex = 1, 5 do
         data.getActiveEntries(env.dbChar, "a", pullIndex)
       end
-      assert.equals(3, plans[1].entries[1].uses)
+      assert.equals(5, plans[1].entries[1].uses)
       assert.equals(1, plans[2].entries[1].uses)
       assert.equals(2, plans[3].entries[1].uses)
       assert.is_nil(plans[4].entries[1].uses)
       assert.equals("use", plans[4].entries[1].action)
+      assert.equals(4, plans[5].entries[1].uses)
     end)
   end)
 
@@ -297,7 +299,7 @@ describe("CooldownData 单波使用次数", function()
       assert.equals(2, env.dbChar.cooldownPlans.a[3].entries[1].uses)
       assert.equals(3, data.getActiveEntries(env.dbChar, "a", 5)[1].useOrdinal)
       store:SetUses("a", 3, 114050, 9)
-      assert.equals(3, env.dbChar.cooldownPlans.a[3].entries[1].uses)
+      assert.equals(5, env.dbChar.cooldownPlans.a[3].entries[1].uses)
       store:SetUses("a", 3, 114050, 1)
       assert.is_nil(env.dbChar.cooldownPlans.a[3].entries[1].uses)
       assert.is_false(store:SetUses("a", 3, 999, 2))

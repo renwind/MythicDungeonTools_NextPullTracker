@@ -264,7 +264,7 @@ function MDTNPTCooldownPlanMixin:RebuildCells()
         if not se or not se.allowUses then return end
         GameTooltip:SetOwner(c, "ANCHOR_RIGHT")
         GameTooltip:SetText(se.name or "")
-        local hint = MDT_NPT.L["Wheel: uses this pull (1-3)"] or "Wheel: uses this pull (1-3)"
+        local hint = MDT_NPT.L["Wheel: uses this pull (1-5)"] or "Wheel: uses this pull (1-5)"
         if c.uses and c.uses >= 2 then hint = hint .. "  ×" .. c.uses end
         GameTooltip:AddLine(hint, 1, 1, 1, true)
         GameTooltip:Show()
@@ -368,7 +368,7 @@ function MDTNPTCooldownPlanMixin:OnCellWheel(cell, delta)
   if not seedEntry or not seedEntry.allowUses then return end
   if cell.action ~= "use" then return end
   local cur = cell.uses or 1
-  local nxt = math.min(3, math.max(1, cur + (delta > 0 and 1 or -1)))
+  local nxt = math.min(5, math.max(1, cur + (delta > 0 and 1 or -1)))
   if nxt == cur then return end  -- clamped at the 1/3 ends: nothing to store
   local uid = self.uid
   local pullIndex = self.selectedPull

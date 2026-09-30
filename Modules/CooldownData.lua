@@ -10,6 +10,9 @@ local CooldownData = {}
 
 -- Seed table: only long-CD, spec-relevant cooldowns worth per-pull planning (design 6.1).
 -- Spell IDs are the dump-verified truth (simc SpellDataDump/shaman.txt); do not add undumped IDs.
+-- baseCD 以实战日志实证为准：+22 纳洛拉克洞穴报告 C9pFgkRJwMvHB4KY 的 12 次升腾 cast
+-- 最小间隔 120s（五次贴 120~125s），故升腾 CD=120；旧值 180 与实证冲突（dump 出处已不可考，
+-- 仓库内无 simc dump 文件可复核）。
 local SEED_TABLE = {
   [262] = { -- Elemental Shaman
     {
@@ -17,7 +20,7 @@ local SEED_TABLE = {
       kind     = "spell",
       name     = "Ascendance",
       icon     = nil, -- resolved at runtime
-      baseCD   = 180,
+      baseCD   = 120,
       allowUses = true, -- per-pull use count (1-3) settable via editor wheel (design 2026-09-12)
     },
     {
@@ -138,7 +141,9 @@ local function sanitizePlanEntry(entry)
     if type(entry.uses) ~= "number" then
       entry.uses = nil; fixed = true
     else
-      local clamped = math.min(3, math.max(1, math.floor(entry.uses)))
+      -- 上限 5：120s CD 在 9~10 分钟的合波里实测可开 4~5 次（同报告第 5 波 4 次），
+      -- 旧上限 3 会截断真实计划。
+      local clamped = math.min(5, math.max(1, math.floor(entry.uses)))
       if clamped ~= entry.uses then entry.uses = clamped end
     end
   end

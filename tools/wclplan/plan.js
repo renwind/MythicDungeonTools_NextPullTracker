@@ -14,7 +14,7 @@ function buildEntrySpec(usage) {
     const count = usage[skill] || 0;
     if (count < 1) continue;
     let token = SKILL_IDS[skill] + ":" + SKILL_KIND[skill] + ":use";
-    if (count >= 2) token += ":" + Math.min(3, count);
+    if (count >= 2) token += ":" + Math.min(5, count);
     parts.push(token);
   }
   return parts.join(";");

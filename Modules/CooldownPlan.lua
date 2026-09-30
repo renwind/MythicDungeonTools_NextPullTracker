@@ -50,7 +50,7 @@ function CooldownPlan:SetUses(uid, pullIndex, id, uses)
   for _, e in ipairs(plan.entries) do
     if e.id == id then
       if type(uses) == "number" and uses >= 2 then
-        e.uses = math.min(3, math.floor(uses))
+        e.uses = math.min(5, math.floor(uses))
       else
         e.uses = nil
       end

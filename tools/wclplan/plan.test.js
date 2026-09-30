@@ -12,6 +12,11 @@ test("零使用的技能不出现", () => {
   assert.equal(buildEntrySpec({ lust: 0, asc: 0, pot: 0 }), "");
 });
 
+test("uses 上限 5：4 保留、7 钳到 5", () => {
+  assert.equal(buildEntrySpec({ lust: 0, asc: 4, pot: 0 }), "114050:spell:use:4");
+  assert.equal(buildEntrySpec({ lust: 0, asc: 7, pot: 0 }), "114050:spell:use:5");
+});
+
 test("plan 行按合并组编号且 usage 按组求和，行首带 routeKey", () => {
   const groups = [[1], [2, 3]];
   const usage = [
