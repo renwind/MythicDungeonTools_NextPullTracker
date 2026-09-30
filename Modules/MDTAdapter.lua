@@ -6,7 +6,11 @@ local _, MDT_NPT = ...
 -- MDT's static Midnight dungeon files into this addon's private table and this
 -- adapter supplies the small database surface used by the tracker.
 local Adapter = MDT_NPT
-local PublicAPI = _G.MythicDungeonToolsAPI
+-- 不能在文件加载时捕获：NPT 的 TOC 可能先于 MDT 核心加载，那一刻
+-- MythicDungeonToolsAPI 还不存在，upvalue 会永远是 nil（真机实测踩过）。
+local function publicAPI()
+  return _G.MythicDungeonToolsAPI
+end
 local UI_ADDON_NAME = "MythicDungeonTools_UI"
 
 Adapter.AddonName = "MythicDungeonTools"
@@ -55,7 +59,8 @@ function Adapter:GetDB()
   -- 没有 presets），拿它当权威会把 MDT 的选中读成默认副本。只认带 presets 的那张。
   local saved = _G.MythicDungeonToolsDB
   local savedDB = saved and type(saved.global) == "table" and saved.global or nil
-  local apiDB = PublicAPI and PublicAPI.GetDB and PublicAPI:GetDB() or nil
+  local api = publicAPI()
+  local apiDB = api and api.GetDB and api:GetDB() or nil
   if hasPresets(apiDB) then return apiDB end
   if hasPresets(savedDB) then return savedDB end
   return apiDB or savedDB
@@ -118,7 +123,8 @@ function Adapter:GetCurrentPreset(dungeonIndex)
   -- GetDB 选中的表可能恰好不含目标副本的预设（残表/半初始化表），再试另一张。
   local saved = _G.MythicDungeonToolsDB
   local savedDB = saved and type(saved.global) == "table" and saved.global or nil
-  local apiDB = PublicAPI and PublicAPI.GetDB and PublicAPI:GetDB() or nil
+  local api = publicAPI()
+  local apiDB = api and api.GetDB and api:GetDB() or nil
   for _, alt in ipairs({ savedDB, apiDB }) do
     if alt and alt ~= db then
       preset = resolvePreset(alt, dungeonIndex)

@@ -69,6 +69,17 @@ describe("MDTAdapter.lua", function()
     assert.equals("live-route", adapter:GetCurrentPreset().uid)
   end)
 
+  it("finds the public API even when MDT core loads after this addon", function()
+    -- 加载序实测坑：NPT 的 TOC 可能先于 MDT 核心，文件顶层捕获 API 会永远是 nil。
+    local liveDB = { currentDungeonIdx = 5, currentPreset = { [5] = 1 }, presets = { [5] = {} } }
+    liveDB.presets[5][1] = { uid = "late-api", value = { pulls = { {} } } }
+    local adapter = loadAdapter({ L = {} })
+    _G.MythicDungeonToolsAPI = { GetDB = function() return liveDB end }
+
+    assert.equals(liveDB, adapter:GetDB())
+    assert.equals("late-api", adapter:GetCurrentPreset().uid)
+  end)
+
   it("updates the selected dungeon and initializes its preset selection", function()
     local db = { currentPreset = {}, presets = {} }
     _G.MythicDungeonToolsAPI = { GetDB = function() return db end }
