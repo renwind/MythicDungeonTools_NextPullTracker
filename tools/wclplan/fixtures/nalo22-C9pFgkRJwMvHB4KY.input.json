@@ -596,5 +596,91 @@
       "timestamp": 3727637,
       "targetID": 2
     }
+  ],
+  "castEvents": [
+    {
+      "skill": "pot",
+      "t": 44.1
+    },
+    {
+      "skill": "asc",
+      "t": 46.4
+    },
+    {
+      "skill": "lust",
+      "t": 46.6
+    },
+    {
+      "skill": "asc",
+      "t": 232.3
+    },
+    {
+      "skill": "asc",
+      "t": 362
+    },
+    {
+      "skill": "pot",
+      "t": 489
+    },
+    {
+      "skill": "asc",
+      "t": 491.3
+    },
+    {
+      "skill": "asc",
+      "t": 611.8
+    },
+    {
+      "skill": "lust",
+      "t": 785.3
+    },
+    {
+      "skill": "asc",
+      "t": 789.3
+    },
+    {
+      "skill": "pot",
+      "t": 886.7
+    },
+    {
+      "skill": "asc",
+      "t": 911.6
+    },
+    {
+      "skill": "asc",
+      "t": 1032.4
+    },
+    {
+      "skill": "pot",
+      "t": 1233.3
+    },
+    {
+      "skill": "asc",
+      "t": 1235.4
+    },
+    {
+      "skill": "asc",
+      "t": 1360
+    },
+    {
+      "skill": "lust",
+      "t": 1464.3
+    },
+    {
+      "skill": "asc",
+      "t": 1480
+    },
+    {
+      "skill": "pot",
+      "t": 1601.4
+    },
+    {
+      "skill": "asc",
+      "t": 1603.7
+    }
+  ],
+  "lastWaveEnemies": [
+    25,
+    26
   ]
 }

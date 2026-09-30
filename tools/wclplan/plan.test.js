@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildEntrySpec, buildPlanLines, computeRouteKey } = require("./plan.js");
+const { buildEntrySpec, buildPlanLines, computeRouteKey, specLines, sumUsagePerWave } = require("./plan.js");
 
 test("entrySpec 语法 id:kind:action[:uses]，分号分隔", () => {
   const spec = buildEntrySpec({ lust: 1, asc: 2, pot: 1 });
@@ -33,6 +33,33 @@ test("plan 行按合并组编号且 usage 按组求和，行首带 routeKey", ()
 
 test("整波无规划不产出行", () => {
   assert.deepEqual(buildPlanLines([[1]], [{ lust: 0, asc: 0, pot: 0 }], "00000001"), []);
+});
+
+test("specLines 空波不产出行，但波号仍按全波计数", () => {
+  const lines = specLines([
+    { lust: 1, asc: 0, pot: 0 },
+    { lust: 0, asc: 0, pot: 0 },
+    { lust: 0, asc: 2, pot: 1 },
+  ], "00000001");
+  assert.deepEqual(lines, [
+    "/npt importplan 00000001 1 32182:spell:use",
+    "/npt importplan 00000001 3 114050:spell:use:2;241308:item:use",
+  ]);
+});
+
+test("sumUsagePerWave 按 cast 归属波计数，未知技能忽略", () => {
+  const usage = sumUsagePerWave(3, [
+    { skill: "asc", t: 10 },
+    { skill: "asc", t: 20 },
+    { skill: "lust", t: 30 },
+    { skill: "pot", t: 40 },
+    { skill: "asc", t: 50 },
+  ], [0, 0, 2, 2, -1]);
+  assert.deepEqual(usage, [
+    { lust: 0, asc: 2, pot: 0 },
+    { lust: 0, asc: 0, pot: 0 },
+    { lust: 1, asc: 0, pot: 1 },
+  ]);
 });
 
 test("routeKey 对相同 pulls 稳定、clone 数变化即变化", () => {

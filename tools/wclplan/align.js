@@ -15,6 +15,28 @@ function loadNpcIds(luaText) {
   return out;
 }
 
+// enemyIdx -> {id, count, clones}；count=0 的是 boss/召唤物（不占兵力）。
+function loadEnemyMeta(luaText) {
+  const start = luaText.indexOf("MDT.dungeonEnemies[");
+  if (start < 0) throw new Error("align: dungeonEnemies block not found");
+  const block = luaText.slice(start);
+  const re = /\["id"\]\s*=\s*(\d+),\s*\["count"\]\s*=\s*(\d+)/g;
+  const meta = {};
+  let m;
+  let idx = 0;
+  while ((m = re.exec(block)) !== null) {
+    idx += 1;
+    meta[idx] = { id: Number(m[1]), count: Number(m[2]), clones: 0 };
+  }
+  const cloneRe = /\["clones"\] = \{([\s\S]*?)\n    \}/g;
+  idx = 0;
+  while ((m = cloneRe.exec(block)) !== null) {
+    idx += 1;
+    if (meta[idx]) meta[idx].clones = (m[1].match(/\[\d+\] = \{/g) || []).length;
+  }
+  return meta;
+}
+
 function assignDeathsToPulls(pulls, npcIds, deathEvents) {
   const queues = {};
   pulls.forEach((pull, pullIndex) => {
@@ -27,18 +49,20 @@ function assignDeathsToPulls(pulls, npcIds, deathEvents) {
   const windows = pulls.map(() => ({ start: null, end: null }));
   const deathCounts = pulls.map(() => 0);
   const unassigned = [];
+  const deathPulls = [];
   const sorted = deathEvents.slice().sort((a, b) => a.timestamp - b.timestamp);
   for (const death of sorted) {
     const entry = (queues[death.gameId] || []).find((q) => q.remaining > 0);
-    if (!entry) { unassigned.push(death); continue; }
+    if (!entry) { unassigned.push(death); deathPulls.push(null); continue; }
     entry.remaining -= 1;
     const seconds = death.timestamp / 1000;
     const w = windows[entry.pull - 1];
     w.start = w.start === null ? seconds : Math.min(w.start, seconds);
     w.end = w.end === null ? seconds : Math.max(w.end, seconds);
     deathCounts[entry.pull - 1] += 1;
+    deathPulls.push(entry.pull);
   }
-  return { windows, deathCounts, unassigned };
+  return { windows, deathCounts, unassigned, deathPulls, deathSeconds: sorted.map((d) => d.timestamp / 1000) };
 }
 
 // 把每个路线 pull 映射回它所属的 WCL fight（1-based）：用该 pull 死亡窗口中点
@@ -55,4 +79,4 @@ function mapPullsToFights(fightWindows, aligned) {
   });
 }
 
-module.exports = { loadNpcIds, assignDeathsToPulls, mapPullsToFights };
+module.exports = { loadNpcIds, loadEnemyMeta, assignDeathsToPulls, mapPullsToFights };

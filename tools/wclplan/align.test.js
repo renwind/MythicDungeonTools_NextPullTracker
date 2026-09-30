@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { loadNpcIds, assignDeathsToPulls, mapPullsToFights } = require("./align.js");
+const { loadNpcIds, loadEnemyMeta, assignDeathsToPulls, mapPullsToFights } = require("./align.js");
 
 const LUA_SNIPPET = [
   "MDT.dungeonEnemies[dungeonIndex] = {",
@@ -16,11 +16,61 @@ const LUA_SNIPPET = [
   "}",
 ].join("\n");
 
+// 与 MDT 副本 Lua 的真实排版一致（clones 块换行、id 紧跟 count）。
+const META_SNIPPET = [
+  "MDT.dungeonEnemies[dungeonIndex] = {",
+  "  [1] = {",
+  '    ["name"] = "Bloated Bloodfist",',
+  '    ["id"] = 241874,',
+  '    ["count"] = 4,',
+  '    ["health"] = 1234,',
+  '    ["clones"] = {',
+  "      [1] = {",
+  "      },",
+  "      [2] = {",
+  "      },",
+  "      [3] = {",
+  "      },",
+  "    },",
+  "  },",
+  "  [2] = {",
+  '    ["name"] = "Zul\'jarra",',
+  '    ["id"] = 246409,',
+  '    ["count"] = 0,',
+  '    ["health"] = 21891972,',
+  '    ["clones"] = {',
+  "      [1] = {",
+  "      },",
+  "    },",
+  "  },",
+  "}",
+].join("\n");
+
 test("loadNpcIds 按 enemyIdx 顺序取 id", () => {
   const npcIds = loadNpcIds(LUA_SNIPPET);
   assert.equal(npcIds[1], 245855);
   assert.equal(npcIds[2], 241814);
   assert.equal(npcIds[3], undefined);
+});
+
+test("loadEnemyMeta 取 id/count 与 clones 数（count=0 是 boss/召唤物）", () => {
+  const meta = loadEnemyMeta(META_SNIPPET);
+  assert.deepEqual(meta[1], { id: 241874, count: 4, clones: 3 });
+  assert.deepEqual(meta[2], { id: 246409, count: 0, clones: 1 });
+  assert.equal(meta[3], undefined);
+});
+
+test("assignDeathsToPulls 额外给出升序死亡秒数与逐死亡的 pull 归属", () => {
+  const pulls = [{ 1: [1] }, { 2: [1] }];
+  const npcIds = { 1: 100, 2: 200 };
+  const deaths = [
+    { gameId: 200, timestamp: 30000 },
+    { gameId: 999, timestamp: 20000 },
+    { gameId: 100, timestamp: 10000 },
+  ];
+  const { deathSeconds, deathPulls } = assignDeathsToPulls(pulls, npcIds, deaths);
+  assert.deepEqual(deathSeconds, [10, 20, 30]);
+  assert.deepEqual(deathPulls, [1, null, 2]);
 });
 
 test("同 npc 的死亡按时间序填入各 pull 队列", () => {

@@ -105,6 +105,37 @@ describe("ImportPlan apply", function()
     end)
   end)
 
+  it("真机产物：+22 纳洛拉克洞穴 11 波合并路线的 routeKey 与 JS 侧算出的一致", function()
+    scenario(function(env)
+      local function pull(specs)
+        local t = {}
+        for _, s in ipairs(specs) do
+          local idx, n = s:match("^(%d+):(%d+)$")
+          local clones = {}
+          for i = 1, tonumber(n) do clones[i] = i end
+          t[tonumber(idx)] = clones
+        end
+        return t
+      end
+
+      local pulls = {
+        pull({ "2:2", "3:7", "4:1", "15:2", "17:3" }),
+        pull({ "1:1", "2:1", "3:1", "4:1", "15:4", "24:1" }),
+        pull({ "2:1", "3:1", "4:1", "15:2", "16:1" }),
+        pull({ "2:3", "3:6", "17:2" }),
+        pull({ "6:7", "7:1", "8:2", "9:1", "15:2" }),
+        pull({ "4:2", "6:3", "8:2", "9:2", "10:1", "15:2" }),
+        pull({ "5:1", "6:5", "7:1", "8:2", "9:1", "10:1" }),
+        pull({ "6:3", "8:2", "18:1" }),
+        pull({ "11:2", "13:1", "14:1", "22:1", "23:1" }),
+        pull({ "11:2", "12:2", "13:2", "14:1", "21:1", "22:2", "23:1" }),
+        pull({ "12:1", "14:2", "23:2", "25:1", "26:1" }),
+      }
+
+      assert.equals("4624dc42", MDT_NPT.ImportPlan.computeRouteKey(pulls))
+    end)
+  end)
+
   it("无预设 uid 或波次越界报错且不写库", function()
     scenario(function(env)
       local preset = presetWith({ { [3] = { 1 } } })

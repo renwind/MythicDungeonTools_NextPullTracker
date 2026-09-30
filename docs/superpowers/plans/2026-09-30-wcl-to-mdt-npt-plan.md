@@ -13,7 +13,7 @@
 - Threechest `POST https://threechest.io/api/wclRoute` body `{code, fightId}` 返回整局路线所需事件；其 Export MDT 串与本管线编码互通（端到端导入实测通过）。
 - WCL 的 fight 列表 = 每波（Pull 1..N）+ 局内起止偏移；报告页公开可读。
 - 合波判据（+22 纳洛拉克洞穴报告 C9pFgkRJwMvHB4KY 实测）：本波窗口内 0 死亡，或与下一波间隔 < 8s（该报告三组合并间隔 0s/1s/5s，正常波间隔 ≥10s）。
-- WCL V2 API 对本账户不可用（建 client 需战网绑定，cn 站无绑定入口）；V1 REST 已 404。不要走 API。
+- ~~WCL V2 API 对本账户不可用~~ **已可用**（2026-09-30 用户建成 V2 client）：token 走 `https://www.warcraftlogs.com/oauth/token`（HTTP Basic = client_id:client_secret，`grant_type=client_credentials`），查询走 `/api/v2/client`。cn 站没有 `/api` 与 `/oauth`，必须用 www。凭据只走环境变量，**不入库、不写记忆**。`filterExpression` 的 token 不可靠（`sourceID=1` 返回 0 行），改用不带过滤的 events 再本地筛。
 
 **输入 JSON 约定（`tools/wclplan/input.json`，runbook 产出）：**
 ```json
@@ -21,15 +21,23 @@
   "routeString": "!~MDT2~....",
   "mdtDungeonFile": "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns/MythicDungeonTools/Midnight/DenOfNalorakk.lua",
   "deathEvents": [{ "gameId": 241814, "timestamp": 65468 }],
+  "castEvents": [{ "skill": "asc", "t": 46.4 }],
+  "debuffEvents": [{ "spellId": 57723, "timestamp": 46600, "targetId": 3 }],
   "usage": [{ "lust": 0, "asc": 1, "pot": 1 }],
   "wclWindows": [{ "start": 22, "end": 100 }],
   "wclDeathCounts": [13, 4, 0, 4],
+  "lastWaveEnemies": [25, 26],
   "meta": { "dungeon": "nalo", "key": 22, "report": "C9pFgkRJwMvHB4KY" }
 }
 ```
 - `deathEvents` 来自 Threechest `/api/wclRoute` 的 deathEvents（timestamp 为整局相对毫秒）；窗口与死亡数由 Task 4 的对齐在**路线空间**推出。
+- `castEvents`（Task 9，combat 粒度必需）：`skill` ∈ `asc|lust|pot`，`t` 为整局相对**秒**。combat 模式由它自动归属每波 usage；fight 模式仍读人工填的 `usage`。
+- `debuffEvents`（喂 `lust.js` 的 `detectLustUses`）：WCL 原始事件形状 `{ abilityGameID, type: "applydebuff", timestamp, targetID }`，族 ID 57723=精疲力尽 / 80354=时空位移。**timestamp 是报告绝对毫秒**（本 fixture 里钥匙起点 = 2263350），与 `deathEvents`/`castEvents` 的整局相对时间不同轴，用前先减钥匙起点。
 - `usage` 按**路线 pull 序**（长度 = 路线 pulls 数），runbook 把每波 cast 时间戳落进对齐后的路线 pull 窗口分桶。
-- `wclWindows`/`wclDeathCounts` 可选，仅用于交叉验证合并波数。
+- `wclWindows`/`wclDeathCounts` fight 粒度必需；combat 粒度不读。
+- `lastWaveEnemies`（Task 9）：要补挂到最后一波的 MDT enemyIdx。Threechest 导出的路线不含 `count=0` 的 boss（本副本 25 Nalorakk / 26 Zul'jarra），少了它们最后一波会被 NPT 的零 forces 自动跳过；补谁属于人工判断（同副本还有 27 Echo of Nalorakk 等召唤物，按用户 2026-09-30 的决定不补），所以 cli 只列候选、不自动挂。
+
+**CLI：** `node tools/wclplan/cli.js <input.json> <out-dir> [--granularity=fight|combat]`（默认 `fight`，见 Task 9）。
 
 ---
 
@@ -39,7 +47,7 @@
 - Create: `tools/wclplan/cbor.js`
 - Test: `tools/wclplan/cbor.test.js`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```js
 // tools/wclplan/cbor.test.js
@@ -89,12 +97,12 @@ test("解码器拒绝截断输入", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `node --test tools/wclplan/cbor.test.js`
 Expected: FAIL，`Cannot find module './cbor.js'`
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 ```js
 // tools/wclplan/cbor.js
@@ -238,12 +246,12 @@ function decodeCbor(buf) {
 module.exports = { encodeCbor, decodeCbor };
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `node --test tools/wclplan/cbor.test.js`
 Expected: PASS（6 个 test 全绿）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add tools/wclplan/cbor.js tools/wclplan/cbor.test.js
@@ -258,7 +266,7 @@ git commit -m "feat: add CBOR subset codec for MDT route strings"
 - Create: `tools/wclplan/mdtstring.js`
 - Test: `tools/wclplan/mdtstring.test.js`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```js
 // tools/wclplan/mdtstring.test.js
@@ -295,12 +303,12 @@ test("损坏 base64 拒绝", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `node --test tools/wclplan/mdtstring.test.js`
 Expected: FAIL，`Cannot find module './mdtstring.js'`
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 ```js
 // tools/wclplan/mdtstring.js
@@ -333,12 +341,12 @@ function decodeMdtString(text) {
 module.exports = { encodeMdtString, decodeMdtString, PREFIX };
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `node --test tools/wclplan/mdtstring.test.js`
 Expected: PASS（4 个 test 全绿）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add tools/wclplan/mdtstring.js tools/wclplan/mdtstring.test.js
@@ -353,7 +361,7 @@ git commit -m "feat: add MDT !~MDT2~ string codec"
 - Create: `tools/wclplan/merge.js`
 - Test: `tools/wclplan/merge.test.js`
 
-- [ ] **Step 1: 写失败测试**（fixture 为 +22 纳洛拉克洞穴实测值）
+- [x] **Step 1: 写失败测试**（fixture 为 +22 纳洛拉克洞穴实测值）
 
 ```js
 // tools/wclplan/merge.test.js
@@ -391,12 +399,12 @@ test("长度不一致抛错", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `node --test tools/wclplan/merge.test.js`
 Expected: FAIL，`Cannot find module './merge.js'`
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 ```js
 // tools/wclplan/merge.js
@@ -430,12 +438,12 @@ function mergePulls(windows, deathCounts, opts = {}) {
 module.exports = { mergePulls, DEFAULT_GAP_SECONDS };
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `node --test tools/wclplan/merge.test.js`
 Expected: PASS（4 个 test 全绿）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add tools/wclplan/merge.js tools/wclplan/merge.test.js
@@ -461,7 +469,7 @@ git commit -m "feat: add pull merge rule calibrated on +22 NALO report"
 - Modify: `tools/wclplan/merge.js`（窗口为 null 时跳过间隔判据）
 - Modify: `tools/wclplan/merge.test.js`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```js
 // tools/wclplan/align.test.js
@@ -531,12 +539,12 @@ test("零死亡波窗口为 null 时只靠零死亡判据合并", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `node --test tools/wclplan/align.test.js tools/wclplan/merge.test.js`
 Expected: FAIL（align.js 不存在；merge 的 null 窗口用例失败）
 
-- [ ] **Step 3: 实现 align.js 并让 merge.js 容忍 null 窗口**
+- [x] **Step 3: 实现 align.js 并让 merge.js 容忍 null 窗口**
 
 ```js
 // tools/wclplan/align.js
@@ -595,12 +603,12 @@ module.exports = { loadNpcIds, assignDeathsToPulls };
     );
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `node --test tools/wclplan/align.test.js tools/wclplan/merge.test.js tools/wclplan/cbor.test.js tools/wclplan/mdtstring.test.js`
 Expected: 全绿
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add tools/wclplan/align.js tools/wclplan/align.test.js tools/wclplan/merge.js tools/wclplan/merge.test.js
@@ -616,7 +624,7 @@ git commit -m "feat: align WCL deaths to route pulls via npcId queues"
 - Create: `tools/wclplan/cli.js`
 - Test: `tools/wclplan/plan.test.js`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```js
 // tools/wclplan/plan.test.js
@@ -660,12 +668,12 @@ test("routeKey 对相同 pulls 稳定、clone 数变化即变化", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `node --test tools/wclplan/plan.test.js`
 Expected: FAIL，`Cannot find module './plan.js'`
 
-- [ ] **Step 3: 最小实现 plan.js**
+- [x] **Step 3: 最小实现 plan.js**
 
 ```js
 // tools/wclplan/plan.js
@@ -732,7 +740,7 @@ function computeRouteKey(pulls) {
 module.exports = { buildEntrySpec, buildPlanLines, computeRouteKey, SKILL_IDS };
 ```
 
-- [ ] **Step 4: 最小实现 cli.js**
+- [x] **Step 4: 最小实现 cli.js**
 
 ```js
 // tools/wclplan/cli.js
@@ -798,12 +806,12 @@ function main() {
 main();
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `node --test tools/wclplan/plan.test.js`
 Expected: PASS（4 个 test 全绿）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add tools/wclplan/plan.js tools/wclplan/plan.test.js tools/wclplan/cli.js
@@ -818,7 +826,7 @@ git commit -m "feat: add plan line builder and pipeline CLI"
 - Create: `Modules/ImportPlan.lua`
 - Test: `spec/ImportPlan_spec.lua`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```lua
 -- spec/ImportPlan_spec.lua
@@ -939,12 +947,12 @@ describe("ImportPlan apply", function()
 end)
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `node .tmp-npt-task/luaenv/minibusted.js spec/ImportPlan_spec.lua`
 Expected: FAIL，`loadfile` 找不到 `Modules/ImportPlan.lua`
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 ```lua
 -- Modules/ImportPlan.lua
@@ -1057,12 +1065,12 @@ end
 MDT_NPT.ImportPlan = ImportPlan
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `node .tmp-npt-task/luaenv/minibusted.js spec/ImportPlan_spec.lua`
 Expected: PASS（5 个 it 全绿）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add Modules/ImportPlan.lua spec/ImportPlan_spec.lua
@@ -1078,12 +1086,12 @@ git commit -m "feat: add ImportPlan pure logic for /npt importplan"
 - Modify: `MythicDungeonTools_NextPullTracker.toc` 或对应 xml（若 ImportPlan.lua 未列入加载顺序；见 Step 1 检查）
 - Test: `spec/ImportPlan_spec.lua`（追加 dispatch 用例）
 
-- [ ] **Step 1: 检查加载顺序**
+- [x] **Step 1: 检查加载顺序**
 
 Run: `grep -n "ImportPlan\|CooldownPlan.lua\|Slash.lua" MythicDungeonTools_NextPullTracker.toc locales.xml 2>/dev/null; grep -rn "Slash.lua" --include=*.xml .`
 Expected: 找到 Slash.lua 与 CooldownPlan.lua 的加载位置；把 `Modules/ImportPlan.lua` 加在 CooldownPlan.lua 之后、Slash.lua 之前（同一 xml/TOC 列表）。
 
-- [ ] **Step 2: 写失败测试（dispatch 到 ImportPlan）**
+- [x] **Step 2: 写失败测试（dispatch 到 ImportPlan）**
 
 在 `spec/ImportPlan_spec.lua` 的 `describe("ImportPlan apply", ...)` 之后追加：
 
@@ -1121,12 +1129,12 @@ describe("Slash dispatch importplan", function()
 end)
 ```
 
-- [ ] **Step 3: 跑测试确认失败**
+- [x] **Step 3: 跑测试确认失败**
 
 Run: `node .tmp-npt-task/luaenv/minibusted.js spec/ImportPlan_spec.lua`
 Expected: FAIL，`importplan` 未识别（走到 printHelp，plan 为 nil 断言过但 uses 断言失败）
 
-- [ ] **Step 4: 实现 handler 与命令条目**
+- [x] **Step 4: 实现 handler 与命令条目**
 
 在 `Modules/Slash.lua` 的 `handlePlan` 之后加：
 
@@ -1155,17 +1163,17 @@ end
   { name = "importplan", usage = "importplan <routeKey> <wave> <spec>", help = "import a generated cooldown plan for wave N", handler = handleImportPlan },
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `node .tmp-npt-task/luaenv/minibusted.js spec/ImportPlan_spec.lua`
 Expected: PASS（7 个 it 全绿）
 
-- [ ] **Step 6: 全量本地回归**
+- [x] **Step 6: 全量本地回归**
 
 Run: `node .tmp-npt-task/luaenv/minibusted.js spec/CooldownData_spec.lua spec/CooldownPlanEditor_spec.lua spec/ImportPlan_spec.lua`
 Expected: 全绿（MDTAdapter_spec 需单跑，见 luaenv 记忆）
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add Modules/Slash.lua spec/ImportPlan_spec.lua MythicDungeonTools_NextPullTracker.toc
@@ -1180,26 +1188,103 @@ git commit -m "feat: wire /npt importplan slash command"
 - Create: `tools/wclplan/fixtures/nalo22-C9pFgkRJwMvHB4KY.input.json`（runbook 产出，入库作回归 fixture）
 - Modify: `tools/wclplan/mdtstring.test.js`（追加真实串 fixture 解码用例）
 
-- [ ] **Step 1: 取路线串**：内置浏览器开 `https://threechest.io/`，Ctrl+V 粘贴 `https://cn.warcraftlogs.com/reports/C9pFgkRJwMvHB4KY?fight=4`，等导入完成；覆盖 `window.prompt` 捕获 Export MDT（Ctrl+E）输出，存为 `routeString`。（步骤与 2026-09-30 实测一致；prompt 捕获脚本见当日会话。）
+- [x] **Step 1: 取路线串**：内置浏览器开 `https://threechest.io/`，Ctrl+V 粘贴 `https://cn.warcraftlogs.com/reports/C9pFgkRJwMvHB4KY?fight=4`，等导入完成；覆盖 `window.prompt` 捕获 Export MDT（Ctrl+E）输出，存为 `routeString`。（步骤与 2026-09-30 实测一致；prompt 捕获脚本见当日会话。）
 
-- [ ] **Step 2: 取每波窗口与死亡数**：报告页战斗下拉读 Pull 1..11 的 `(时长) +偏移`；死亡数用 Threechest `/api/wclRoute` 的 deathEvents 按窗口分桶（本 plan 头部 fixture 即该报告实测值，可直接复用）。
+- [x] **Step 2: 取每波窗口与死亡数**：报告页战斗下拉读 Pull 1..11 的 `(时长) +偏移`；死亡数用 Threechest `/api/wclRoute` 的 deathEvents 按窗口分桶（本 plan 头部 fixture 即该报告实测值，可直接复用）。
 
-- [ ] **Step 3: 取每波冷却使用**：报告页对每波 `?fight=N&type=casts&source=<萨满sourceID>` 读 升腾/英勇/药水 的 cast 次数；萨满 sourceID 由「cast 过 32182 的 actor」确定（该报告为 sourceID 1）。
+- [x] **Step 3: 取每波冷却使用**：fight 粒度靠人工读报告页（`?fight=N&type=casts&source=<萨满sourceID>`，萨满 sourceID = cast 过 32182 的 actor，本报告为 sourceID 1）填 `usage`；combat 粒度改用 WCL V2 API 拉 cast 事件填 `castEvents`（`skill` ∈ asc/lust/pot，`t` 为整局相对秒），每波 usage 由 cli 自动归属，不用人工分桶。
 
-- [ ] **Step 4: 生成产物**
+- [x] **Step 4: 生成产物**
 
-Run: `node tools/wclplan/cli.js tools/wclplan/fixtures/nalo22-C9pFgkRJwMvHB4KY.input.json .tmp-npt-task/nalo22`
-Expected: 打印 `groups: [[1],[2],[3,4],[5],[6,7],[8],[9],[10,11]]`，三个产物文件写出。
+Run: `node tools/wclplan/cli.js tools/wclplan/fixtures/nalo22-C9pFgkRJwMvHB4KY.input.json .tmp-npt-task/nalo22 --granularity=combat`
+Expected: `groups: [[1],[2],[3,4],[5,6],[7],[8],[9],[10],[11],[12,13,14],[15,16]]`、`routeKey: 4624dc42`、8 条 importplan 行，三个产物文件写出。
+（fight 粒度 `--granularity=fight` 得 8 波 `[[1],[2],[3,4],[5,6],[7,8,9,10],[11],[12,13],[14,15,16]]`；实战录像核对下来 combat 才是对的，见 Task 9。）
 
-- [ ] **Step 5: 真实串 fixture 用例**：把 Step 1 捕获的串（脱敏后）加入 `mdtstring.test.js`：解码后断言 `value.currentDungeonIdx` 为纳洛拉克索引、`#value.pulls == 8`（合并后）。
+- [x] **Step 5: 真实串 fixture 用例**：把 Step 1 捕获的串（脱敏后）加入 `mdtstring.test.js`：解码后断言 `value.currentDungeonIdx` 为纳洛拉克索引、`value.pulls.length == 16`——Threechest 导出的是**未合并**的原始 16 pull（合并发生在 cli 里，产物 11 波）。
 
-- [ ] **Step 6: 游戏内验证**：MDT 导入 `route.mdt.txt`；逐行粘贴 `importplan.txt`；`/npt start` 后 `/npt alert` 确认合并波（第 3 波 = 原 P3+P4）在接战时即播报嗜血/升腾计划。
+- [ ] **Step 6: 游戏内验证**：MDT 导入 `route.mdt.txt`；逐行粘贴 `importplan.txt`；`/npt start` 后 `/npt alert` 确认合并波（combat 粒度第 3 波 = 原路线 P3+P4）在接战时即播报嗜血/升腾计划。**（唯一未完成步：等用户真机验证。）**
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```bash
 git add tools/wclplan/fixtures/nalo22-C9pFgkRJwMvHB4KY.input.json tools/wclplan/mdtstring.test.js
 git commit -m "test: add +22 NALO end-to-end fixture"
+```
+
+---
+
+### Task 9: 战斗簇粒度切波（`--granularity=combat`）
+
+**背景（2026-09-30 用户看录像标定）：** fight 粒度按 WCL 的 fight 分段合波，但 WCL 的分段本身受脱战判定影响，实战里「一波」常常跨两个 fight，或一个 fight 里其实打了两波。用户核对录像后确认的正确切法是**按死亡时间簇**：没怪死超过 30s = 脱战；空窗里若有升腾/嗜血且距下一簇首死 ≥60s，说明坦克怪还活着、战斗没停 → 合并；接战爆发（距首死 <60s，含战前偷药）不合并。
+
+**Files:**
+- Create: `tools/wclplan/waves.js`、`tools/wclplan/waves.test.js`、`tools/wclplan/cli.test.js`
+- Modify: `tools/wclplan/align.js`（`assignDeathsToPulls` 增返 `deathPulls`/`deathSeconds`；新增 `loadEnemyMeta`）
+- Modify: `tools/wclplan/plan.js`（拆出 `specLines`；新增 `sumUsagePerWave`）
+- Modify: `tools/wclplan/cli.js`（`--granularity`、castEvents 归属、`lastWaveEnemies` 补挂、count=0 候选提示）
+- Modify: `tools/wclplan/fixtures/nalo22-C9pFgkRJwMvHB4KY.input.json`（增 `castEvents` 20 条、`lastWaveEnemies: [25,26]`）
+- Modify: `spec/ImportPlan_spec.lua`（真机产物 routeKey 跨语言锁定）
+
+- [x] **Step 1: 规则与阈值写进 `waves.js`**
+
+`DEFAULTS = { gapSeconds: 30, tailSeconds: 5, engageGraceSeconds: 120, midCombatMinSeconds: 60, maxAscPerWave: 2 }`。四个函数：`clusterDeaths`（间隔切簇）、`majorityPullSets`（pull 归簇按死亡多数票）、`assignCastCluster`（cast 归簇：簇内 → 空窗接战 → 最近簇）、`buildCombatWaveDetail`（合并 + 升腾上限再切）。
+
+多数票是标定出来的必需项：+22 报告里 p9 有 1 只（npc 241911）死在 15:35，落进 p10 的簇，按「任一死亡即归簇」会把 p9 同时塞进第 7、8 两波；多数票（p9 的 10 只死在 13:23–14:08）把它留在第 7 波。
+
+升腾上限 2 是自动纠错守卫：簇阈值粘错时，一波里出现 3+ 次升腾必然不是一波（120s CD）。本 fixture 没触发切分（合并组内最多 2 次）。
+
+- [x] **Step 2: 单测锁阈值行为 + fixture 锁 11 波**
+
+Run: `node --test tools/wclplan/waves.test.js`
+Expected: 6 passed（空窗无爆发不合并 / 战中爆发合并 / 接战爆发不合并 / 升腾超上限再切 / 多数票归簇 / fixture 11 波）。
+
+fixture 标定表（键相对时间；`d` = 空窗 cast 距下一簇首死秒数）：
+
+| 簇 | 时间 | 路线 pull | 空窗 cast(d) | 与前簇 |
+|---|---|---|---|---|
+| c1 | 1:05–1:40 | 1 | — | — |
+| c2 | 2:51–3:00 | 2 | — | 不合并 |
+| c3 | 4:34–4:55 | 3 | 3:52(42) | 不合并 |
+| c4 | 7:33 | 4 | 6:02(92) | **合并** |
+| c5 | 8:31–9:13 | 5,6 | 8:11(20) | 不合并 |
+| c6 | 10:34–11:11 | 7 | 10:11(23) | 不合并 |
+| c7 | 12:14–12:43 | 8 | — | 不合并 |
+| c8 | 13:23–14:08 | 9 | 13:05(18) 13:09(14) | 不合并 |
+| c9 | 15:34–15:52 | 10 | 15:11(23) | 不合并 |
+| c10 | 18:25 | 10 | 17:12(73) | **合并** |
+| c11 | 19:50–20:05 | 11 | — | 不合并 |
+| c12 | 21:03–22:18 | 12,13 | 20:35(28) | 不合并 |
+| c13 | 23:59 | 14 | 22:40(79) | **合并** |
+| c14 | 25:15–26:25 | 15,16 | 24:24(51) 24:40(35) | 不合并 |
+
+14 簇 → 11 波：`[[1],[2],[3,4],[5,6],[7],[8],[9],[10],[11],[12,13,14],[15,16]]`（与用户看录像确认的分组逐波一致）。
+
+- [x] **Step 3: usage 由 castEvents 自动归属**
+
+`waves.castWaves(castEvents, detail)` 给出每条 cast 落在哪一波，`plan.sumUsagePerWave` 计数。校验：产物 8 条行与之前人工填的 `WAVE_USAGE` 逐项相同（如第 8 波 `114050:spell:use:2;241308:item:use` = c9 的 15:11 升腾 + c10 的 17:12 升腾 + 14:46 偷药）。
+
+- [x] **Step 4: boss 补挂走显式输入，不猜**
+
+`loadEnemyMeta` 拿 `count`/`clones`；cli 只**提示**路线里缺失的 count=0 敌人（本副本输出 `19,20,27,28,29,30,32`），实际补挂读 `input.lastWaveEnemies`。原因：本副本 count=0 的敌人有 14 个（含 4 个 `isBoss=true`、共用 encounterID 2777），没有可靠结构特征能自动挑出「最后一波的 boss 战 trio」；25 Nalorakk（ Zul'jarra 的宝宝）+ 26 Zul'jarra 是用户点名要的，27 Echo of Nalorakk 明确不补。
+
+- [x] **Step 5: 端到端 + 跨语言校验**
+
+Run: `node --test tools/wclplan/cbor.test.js tools/wclplan/mdtstring.test.js tools/wclplan/merge.test.js tools/wclplan/align.test.js tools/wclplan/plan.test.js tools/wclplan/lust.test.js tools/wclplan/waves.test.js tools/wclplan/cli.test.js`
+Expected: 49 passed / 0 failed。
+
+Run: `node .tmp-npt-task/luaenv/minibusted.js spec/ImportPlan_spec.lua`
+Expected: 10 passed —— 含新用例「Lua 侧对同一条 11 波路线算出 `4624dc42`」，锁住 JS/Lua routeKey 同公式（游戏内 importplan 靠它校验，算不一致会整批拒写）。
+
+注：`cli.test.js`/`waves.test.js` 的 fixture 用例要读本机 MDT 安装目录的副本 Lua（`input.mdtDungeonFile`），文件不存在时 skip 而非红。
+
+- [x] **Step 6: 提交**
+
+```bash
+git add tools/wclplan/waves.js tools/wclplan/waves.test.js tools/wclplan/cli.js tools/wclplan/cli.test.js \
+        tools/wclplan/align.js tools/wclplan/align.test.js tools/wclplan/plan.js tools/wclplan/plan.test.js \
+        tools/wclplan/fixtures/nalo22-C9pFgkRJwMvHB4KY.input.json spec/ImportPlan_spec.lua \
+        docs/superpowers/plans/2026-09-30-wcl-to-mdt-npt-plan.md
+git commit -m "feat: cut waves by combat clusters, derive usage from cast events"
 ```
 
 ---

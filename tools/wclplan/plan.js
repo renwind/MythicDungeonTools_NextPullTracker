@@ -20,19 +20,40 @@ function buildEntrySpec(usage) {
   return parts.join(";");
 }
 
-function buildPlanLines(groups, usagePerOriginalPull, routeKey) {
+function specLines(waveUsage, routeKey) {
   const lines = [];
-  groups.forEach((group, waveIndex) => {
-    const summed = { lust: 0, asc: 0, pot: 0 };
-    for (const pull of group) {
-      const usage = usagePerOriginalPull[pull - 1] || {};
-      for (const skill of SKILL_ORDER) summed[skill] += usage[skill] || 0;
-    }
-    const spec = buildEntrySpec(summed);
+  waveUsage.forEach((usage, i) => {
+    const spec = buildEntrySpec(usage);
     if (spec === "") return;
-    lines.push("/npt importplan " + routeKey + " " + (waveIndex + 1) + " " + spec);
+    lines.push("/npt importplan " + routeKey + " " + (i + 1) + " " + spec);
   });
   return lines;
+}
+
+function sumUsage(group, usagePerOriginalPull) {
+  const summed = { lust: 0, asc: 0, pot: 0 };
+  for (const pull of group) {
+    const usage = usagePerOriginalPull[pull - 1] || {};
+    for (const skill of SKILL_ORDER) summed[skill] += usage[skill] || 0;
+  }
+  return summed;
+}
+
+function buildPlanLines(groups, usagePerOriginalPull, routeKey) {
+  return specLines(groups.map((group) => sumUsage(group, usagePerOriginalPull)), routeKey);
+}
+
+// castEvents 与 waveOfCast 同序（castWaves 的产物）；未知技能名忽略。
+function sumUsagePerWave(waveCount, castEvents, waveOfCast) {
+  const usage = [];
+  for (let i = 0; i < waveCount; i++) usage.push({ lust: 0, asc: 0, pot: 0 });
+  castEvents.forEach((cast, i) => {
+    const w = waveOfCast[i];
+    if (w < 0 || w >= waveCount) return;
+    if (usage[w][cast.skill] === undefined) return;
+    usage[w][cast.skill] += 1;
+  });
+  return usage;
 }
 
 // 与 Lua 侧 ImportPlan.computeRouteKey 逐字节同公式：
@@ -58,4 +79,4 @@ function computeRouteKey(pulls) {
   return hash.toString(16).padStart(8, "0");
 }
 
-module.exports = { buildEntrySpec, buildPlanLines, computeRouteKey, SKILL_IDS };
+module.exports = { buildEntrySpec, buildPlanLines, specLines, sumUsagePerWave, computeRouteKey, SKILL_IDS };
