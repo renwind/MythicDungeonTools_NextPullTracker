@@ -1,5 +1,7 @@
 // CBOR (RFC 8949) 子集：够 MDT preset 表用即可。
-// 编码：整数(0/1)、文本(3)、字节(2)、数组(4)、map(5)、float64(7)、true/false/null。
+// 编码：整数(0/1)、字节串(2)、数组(4)、map(5)、float64(7)、true/false/null。
+// 字符串一律走字节串(major 2)：暴雪 C_EncodingUtil.SerializeCBOR 实测如此
+//（对 Threechest 真实导出串解码验证过），编码侧必须镜像才能被游戏内读回。
 // 对象键若为纯数字字符串则编码为 CBOR 整数键（MDT pulls 表就是整数键）。
 "use strict";
 
@@ -29,7 +31,7 @@ function encodeInto(value, parts) {
   }
   if (typeof value === "string") {
     const bytes = Buffer.from(value, "utf8");
-    writeHead(parts, 3, bytes.length);
+    writeHead(parts, 2, bytes.length);
     for (const b of bytes) parts.push(b);
     return;
   }
@@ -98,7 +100,8 @@ function decodeItem(reader) {
   const additional = initial & 31;
   if (major === 0) return reader.uint(additional);
   if (major === 1) return -1 - reader.uint(additional);
-  if (major === 2) return new Uint8Array(reader.bytes(reader.uint(additional)));
+  // 暴雪把字符串编成字节串；解码侧两种都按 utf8 文本收，容忍第三方编码器。
+  if (major === 2) return Buffer.from(reader.bytes(reader.uint(additional))).toString("utf8");
   if (major === 3) return Buffer.from(reader.bytes(reader.uint(additional))).toString("utf8");
   if (major === 4) {
     const n = reader.uint(additional);
