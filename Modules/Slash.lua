@@ -204,6 +204,23 @@ local function handlePlan()
   end
 end
 
+-- 导入外部生成的冷却计划（tools/wclplan 产物）。ImportPlan 在 Slash.lua 之后加载，
+-- 与 handlePlan/handleAlert 同一手法：函数体内后取，不在文件顶层捕获 upvalue。
+local function handleImportPlan(rest)
+  local routeKey, waveText, spec = rest:match("^(%S+)%s+(%S+)%s+(.*)$")
+  local wave = tonumber(waveText or "")
+  if not routeKey or not wave or not spec or spec == "" then
+    print(PREFIX..": usage: "..CMD_COLOR.."/npt importplan <routeKey> <wave> <id:kind:action[:uses];...>|r")
+    return
+  end
+  local ok, err = MDT_NPT.ImportPlan:apply(wave, spec, routeKey)
+  if not ok then
+    print(PREFIX..": importplan failed: "..tostring(err))
+    return
+  end
+  print(PREFIX..": imported cooldown plan for pull "..wave..".")
+end
+
 -- ============ command table ============
 
 commands = {
@@ -217,6 +234,7 @@ commands = {
   { name = "hide",     usage = "hide",        help = "disable and hide the beacon HUD",                   handler = handleHide },
   { name = "settings", usage = "settings",    help = "open the settings panel",                           handler = handleSettings },
   { name = "plan",     usage = "plan",        help = "open the cooldown plan editor",                     handler = handlePlan },
+  { name = "importplan", usage = "importplan <routeKey> <wave> <spec>", help = "import a generated cooldown plan for wave N", handler = handleImportPlan },
   { name = "alert",    usage = "alert",       help = "repeat the next pull's cooldown reminder now",      handler = handleAlert },
   { name = "test",     usage = "test",        help = "run the integration test suite",                    handler = handleTest },
   { name = "help",     usage = "help",        help = "show this help message",                            handler = printHelp },

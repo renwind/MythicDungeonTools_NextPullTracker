@@ -113,3 +113,35 @@ describe("ImportPlan apply", function()
     end)
   end)
 end)
+
+describe("Slash dispatch importplan", function()
+  before_each(function() mocks.reset() end)
+
+  it("/npt importplan <routeKey> <wave> <spec> 落到当前预设", function()
+    scenario(function(env)
+      local pull = { [3] = { 1, 2 } }
+      local preset = presetWith({ pull })
+      _G.MDT.GetCurrentPreset = function() return preset end
+      _G.MDT.dungeonEnemies = { [1] = enemiesFor(pull) }
+      _G.SlashCmdList = {}
+      mocks.loadSource("Modules/Slash.lua")
+      local key = MDT_NPT.ImportPlan.computeRouteKey(preset.value.pulls)
+
+      MDT_NPT:Slash("importplan " .. key .. " 1 32182:spell:use:2")
+      local plan = MDT_NPT.CooldownPlan:Get("uid1", 1)
+      assert.equals(1, #plan.entries)
+      assert.equals(2, plan.entries[1].uses)
+      assert.equals("3:2", plan.fingerprint)
+    end)
+  end)
+
+  it("参数缺失打印用法不写库", function()
+    scenario(function(env)
+      _G.MDT.GetCurrentPreset = function() return presetWith({ { [3] = { 1 } } }) end
+      _G.SlashCmdList = {}
+      mocks.loadSource("Modules/Slash.lua")
+      MDT_NPT:Slash("importplan")
+      assert.is_nil(MDT_NPT.CooldownPlan:Get("uid1", 1))
+    end)
+  end)
+end)
