@@ -88,6 +88,8 @@ describe("ImportPlan apply", function()
       assert.equals(2, #plan.entries)
       assert.equals(2, plan.entries[2].uses)
       assert.equals("3:2,5:1", plan.fingerprint)
+      -- 主城 /npt start 靠这个 uid 找回最后导入计划的路线
+      assert.equals("uid1", MDT_NPT:GetDBChar().lastImportedPlanUID)
     end)
   end)
 

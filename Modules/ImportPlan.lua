@@ -114,6 +114,9 @@ function ImportPlan:apply(wave, entrySpec, routeKey)
     end
   end
   CooldownPlan:SetFingerprint(preset.uid, wave, CooldownData.computePullFingerprint(pull, enemies))
+  -- 主城 /npt start 靠这个 uid 找回「最后导入计划的路线」，不依赖 MDT 的选中项。
+  local charDB = MDT_NPT.GetDBChar and MDT_NPT:GetDBChar()
+  if charDB then charDB.lastImportedPlanUID = preset.uid end
   return true
 end
 

@@ -221,7 +221,7 @@ ${rows}
 <li>插件已部署，进游戏先 <code>/reload</code></li>
 <li>MDT → Import → 粘贴 ① 的路线串，导入后<b>选中这个预设</b></li>
 <li>聊天框粘贴 ② 的整包行回车（应回 <code>imported cooldown plan for N pulls</code>）；要逐行核对就粘备用的 ${summary.lines.length} 条（每条回一行 imported cooldown plan for pull N）</li>
-<li>开钥匙后 <code>/npt start</code>，用 <code>/npt alert</code> 核对每波接战时播报的嗜血/升腾计划与 ③ 表一致</li>
+<li>开钥匙后 <code>/npt start</code>，用 <code>/npt alert</code> 核对每波接战时播报的嗜血/升腾计划与 ③ 表一致；主城里 <code>/npt start</code> 会自动跟最后一次导入计划的这条路线（改 MDT 选中后需 <code>/npt stop</code> 再 start）</li>
 </ol></div>
 
 <script>

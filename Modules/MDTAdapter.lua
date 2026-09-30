@@ -134,6 +134,28 @@ function Adapter:GetCurrentPreset(dungeonIndex)
   return nil
 end
 
+-- 按 uid 找预设（扫两张表）。主城/野外 start 时用它定位「最后一次导入计划的路线」，
+-- 不依赖 MDT 的选中项：导入不写选中、赛季默认值还会顶掉手动选择。
+function Adapter:FindPresetByUID(uid)
+  if type(uid) ~= "string" or uid == "" then return nil end
+  local api = publicAPI()
+  local dbs = { api and api.GetDB and api:GetDB() or nil }
+  local saved = _G.MythicDungeonToolsDB
+  dbs[#dbs + 1] = saved and type(saved.global) == "table" and saved.global or nil
+  for _, db in ipairs(dbs) do
+    if type(db) == "table" and type(db.presets) == "table" then
+      for _, dungeonPresets in pairs(db.presets) do
+        if type(dungeonPresets) == "table" then
+          for _, preset in pairs(dungeonPresets) do
+            if isUsablePreset(preset) and preset.uid == uid then return preset end
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+
 function Adapter:GetPresetDiagnostics()
   local db = self:GetDB()
   local dungeonIndex = db and db.currentDungeonIdx

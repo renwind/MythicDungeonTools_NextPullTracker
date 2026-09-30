@@ -80,6 +80,20 @@ describe("MDTAdapter.lua", function()
     assert.equals("late-api", adapter:GetCurrentPreset().uid)
   end)
 
+  it("finds a preset by uid across both database tables", function()
+    local staleDB = { currentDungeonIdx = 160, currentPreset = {} }
+    local liveDB = { currentDungeonIdx = 160, currentPreset = { [160] = 1 }, presets = { [161] = {} } }
+    liveDB.presets[161][6] = { uid = "uid-161", value = { pulls = { {} } } }
+    _G.MythicDungeonToolsAPI = { GetDB = function() return liveDB end }
+    _G.MythicDungeonToolsDB = { global = staleDB }
+
+    local adapter = loadAdapter({ L = {} })
+    assert.equals("uid-161", adapter:FindPresetByUID("uid-161").uid)
+    assert.is_nil(adapter:FindPresetByUID("nope"))
+    assert.is_nil(adapter:FindPresetByUID(""))
+    assert.is_nil(adapter:FindPresetByUID(nil))
+  end)
+
   it("updates the selected dungeon and initializes its preset selection", function()
     local db = { currentPreset = {}, presets = {} }
     _G.MythicDungeonToolsAPI = { GetDB = function() return db end }

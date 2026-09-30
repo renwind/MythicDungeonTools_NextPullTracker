@@ -287,6 +287,16 @@ function MDT_NPT:Start(manual, retryCount, generation, challengeExpected)
   -- Read the route for the dungeon we just detected explicitly. MDT's UI
   -- initialization can replace or mutate its current selection while loading.
   local preset = MDT:GetCurrentPreset(detectedDungeonIndex)
+  -- 主城/野外（不在任何副本区域）时 MDT 的「选中」不可靠：导入路线不写选中、
+  -- 赛季默认值还会顶掉手动选择。记住最后一次导入计划的路线 uid，优先跟它；
+  -- 钥匙内/副本内仍按区域走，不受影响。
+  if detectedDungeonIndex == nil then
+    local charDB = self:GetDBChar()
+    local uid = charDB and charDB.lastImportedPlanUID
+    if uid and (not preset or preset.uid ~= uid) then
+      preset = (MDT.FindPresetByUID and MDT:FindPresetByUID(uid)) or preset
+    end
+  end
   if not preset then
     local diagnostics = MDT.GetPresetDiagnostics and MDT:GetPresetDiagnostics() or "diagnostics unavailable"
     print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — no non-empty MDT route is available ("..diagnostics..").")
