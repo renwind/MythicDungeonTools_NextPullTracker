@@ -268,7 +268,11 @@ describe("CooldownData 单波使用次数", function()
         [3] = plan(spellUses("use", 2.7)), [4] = plan(spellUses("use", "x")),
       }
       env.dbChar.cooldownPlans.a = plans
-      data.getActiveEntries(env.dbChar, "a", 4)  -- sanitize runs inside getPullPlan
+      -- sanitize 是「读哪波洗哪波」（见 matchesSeed 旁「避免清洗历史存档」注释），
+      -- 所以逐波触发读，而不是只读第 4 波就断言全部已钳制。
+      for pullIndex = 1, 4 do
+        data.getActiveEntries(env.dbChar, "a", pullIndex)
+      end
       assert.equals(3, plans[1].entries[1].uses)
       assert.equals(1, plans[2].entries[1].uses)
       assert.equals(2, plans[3].entries[1].uses)
