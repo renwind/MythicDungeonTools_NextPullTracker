@@ -55,6 +55,20 @@ describe("MDTAdapter.lua", function()
     assert.equals("ace-route", adapter:GetCurrentPreset().uid)
   end)
 
+  it("ignores a defaults-only saved table and reads the live API database", function()
+    -- 实测 6.2.20 主城：SavedVariables 那张表只剩赛季默认值（currentDungeonIdx=160、
+    -- 无 presets），活表在 PublicAPI 后面；读错表会把选中副本读成默认副本。
+    local staleDB = { currentDungeonIdx = 160, currentPreset = {} }
+    local liveDB = { currentDungeonIdx = 161, currentPreset = { [161] = 1 }, presets = { [161] = {} } }
+    liveDB.presets[161][1] = { uid = "live-route", value = { pulls = { {} } } }
+    _G.MythicDungeonToolsAPI = { GetDB = function() return liveDB end }
+    _G.MythicDungeonToolsDB = { global = staleDB }
+
+    local adapter = loadAdapter({ L = {} })
+    assert.equals(liveDB, adapter:GetDB())
+    assert.equals("live-route", adapter:GetCurrentPreset().uid)
+  end)
+
   it("updates the selected dungeon and initializes its preset selection", function()
     local db = { currentPreset = {}, presets = {} }
     _G.MythicDungeonToolsAPI = { GetDB = function() return db end }

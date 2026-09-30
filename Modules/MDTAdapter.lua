@@ -45,19 +45,20 @@ function Adapter:RegisterDungeonLocation(dungeonIdx, location)
   end
 end
 
+local function hasPresets(tbl)
+  return type(tbl) == "table" and type(tbl.presets) == "table"
+end
+
 function Adapter:GetDB()
-  -- MDT's core API captures its small bootstrap DB before the load-on-demand
-  -- UI initializes AceDB. Once the UI is loaded, MythicDungeonToolsDB.global
-  -- is the authoritative table containing presets/currentPreset; prefer it so
-  -- we do not keep reading the stale bootstrap table returned by API:GetDB().
+  -- MDT 6.2 手上可能同时存在两张表：PublicAPI 的 bootstrap 表与 SavedVariables 的
+  -- AceDB 表。实测（6.2.20，主城）其中一张会只剩赛季默认值（currentDungeonIdx=160、
+  -- 没有 presets），拿它当权威会把 MDT 的选中读成默认副本。只认带 presets 的那张。
   local saved = _G.MythicDungeonToolsDB
-  if saved and type(saved.global) == "table" then
-    return saved.global
-  end
-  if PublicAPI and PublicAPI.GetDB then
-    return PublicAPI:GetDB()
-  end
-  return nil
+  local savedDB = saved and type(saved.global) == "table" and saved.global or nil
+  local apiDB = PublicAPI and PublicAPI.GetDB and PublicAPI:GetDB() or nil
+  if hasPresets(apiDB) then return apiDB end
+  if hasPresets(savedDB) then return savedDB end
+  return apiDB or savedDB
 end
 
 local function tableValue(tbl, key)
@@ -110,13 +111,20 @@ function Adapter:GetCurrentPreset(dungeonIndex)
   local ready = self:EnsureUIReady()
   if not ready then return nil end
 
-  local saved = _G.MythicDungeonToolsDB
-  local savedDB = saved and saved.global
-  local preset = resolvePreset(savedDB, dungeonIndex)
+  local db = self:GetDB()
+  local preset = resolvePreset(db, dungeonIndex)
   if preset then return preset end
 
+  -- GetDB 选中的表可能恰好不含目标副本的预设（残表/半初始化表），再试另一张。
+  local saved = _G.MythicDungeonToolsDB
+  local savedDB = saved and type(saved.global) == "table" and saved.global or nil
   local apiDB = PublicAPI and PublicAPI.GetDB and PublicAPI:GetDB() or nil
-  if apiDB ~= savedDB then return resolvePreset(apiDB, dungeonIndex) end
+  for _, alt in ipairs({ savedDB, apiDB }) do
+    if alt and alt ~= db then
+      preset = resolvePreset(alt, dungeonIndex)
+      if preset then return preset end
+    end
+  end
   return nil
 end
 
