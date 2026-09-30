@@ -361,7 +361,7 @@
   ],
   "usage": [
     {
-      "lust": 0,
+      "lust": 1,
       "asc": 1,
       "pot": 1
     },
@@ -391,7 +391,7 @@
       "pot": 0
     },
     {
-      "lust": 0,
+      "lust": 1,
       "asc": 4,
       "pot": 1
     },
@@ -504,5 +504,97 @@
     "dungeon": "nalo",
     "key": 22,
     "report": "C9pFgkRJwMvHB4KY"
-  }
+  },
+  "debuffEvents": [
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 2309952,
+      "targetID": 3
+    },
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 2309952,
+      "targetID": 1
+    },
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 2309952,
+      "targetID": 4
+    },
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 2309952,
+      "targetID": 2
+    },
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 2309953,
+      "targetID": 5
+    },
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 3048679,
+      "targetID": 3
+    },
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 3048679,
+      "targetID": 2
+    },
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 3048679,
+      "targetID": 1
+    },
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 3048680,
+      "targetID": 5
+    },
+    {
+      "abilityGameID": 80354,
+      "type": "applydebuff",
+      "timestamp": 3048680,
+      "targetID": 4
+    },
+    {
+      "abilityGameID": 57723,
+      "type": "applydebuff",
+      "timestamp": 3727636,
+      "targetID": 1
+    },
+    {
+      "abilityGameID": 57723,
+      "type": "applydebuff",
+      "timestamp": 3727636,
+      "targetID": 3
+    },
+    {
+      "abilityGameID": 57723,
+      "type": "applydebuff",
+      "timestamp": 3727636,
+      "targetID": 4
+    },
+    {
+      "abilityGameID": 57723,
+      "type": "applydebuff",
+      "timestamp": 3727637,
+      "targetID": 5
+    },
+    {
+      "abilityGameID": 57723,
+      "type": "applydebuff",
+      "timestamp": 3727637,
+      "targetID": 2
+    }
+  ]
 }
