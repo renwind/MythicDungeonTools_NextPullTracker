@@ -8,7 +8,10 @@ local MDT = MDT_NPT.MDT or MDT
 local CooldownData = MDT_NPT.CooldownData
 local CooldownPlan = MDT_NPT.CooldownPlan
 
-local string_format, string_concat, table_sort = string.format, string.concat, table.sort
+-- 注意是 table.concat：string.concat 不是标准 Lua（WoW 里它的行为是把两个参数直接
+-- ..，传表会报 "attempt to concatenate a table value"；本地 fengari 根本没有它，
+-- 曾被 minibusted 的 polyfill 掩盖过）。
+local string_format, string_concat, table_sort = string.format, table.concat, table.sort
 
 local ImportPlan = {}
 
