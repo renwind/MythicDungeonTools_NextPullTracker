@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { loadNpcIds, assignDeathsToPulls } = require("./align.js");
+const { loadNpcIds, assignDeathsToPulls, mapPullsToFights } = require("./align.js");
 
 const LUA_SNIPPET = [
   "MDT.dungeonEnemies[dungeonIndex] = {",
@@ -52,4 +52,23 @@ test("路线里没有的 npc 死亡进 unassigned", () => {
   const npcIds = { 1: 100 };
   const { unassigned } = assignDeathsToPulls(pulls, npcIds, [{ gameId: 999, timestamp: 5 }]);
   assert.equal(unassigned.length, 1);
+});
+
+test("mapPullsToFights 用死亡窗口中点落回 fight 窗口", () => {
+  const fights = [{ start: 0, end: 100 }, { start: 100, end: 200 }, { start: 200, end: 300 }];
+  const aligned = {
+    windows: [{ start: 10, end: 20 }, { start: 50, end: 60 }, { start: 150, end: 160 }, { start: 250, end: 260 }],
+    deathCounts: [2, 2, 2, 2],
+  };
+  assert.deepEqual(mapPullsToFights(fights, aligned), [1, 1, 2, 3]);
+});
+
+test("零死亡 pull 的中点为 null 时落到最近的 fight", () => {
+  const fights = [{ start: 0, end: 100 }, { start: 101, end: 200 }];
+  const aligned = {
+    windows: [{ start: null, end: null }, { start: 150, end: 160 }],
+    deathCounts: [0, 2],
+  };
+  // null 窗口无中点：交给调用方按「并入下一波」处理，这里返回 null。
+  assert.deepEqual(mapPullsToFights(fights, aligned), [null, 2]);
 });

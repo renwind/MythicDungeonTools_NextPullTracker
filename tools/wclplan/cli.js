@@ -9,7 +9,7 @@ const path = require("node:path");
 const { decodeMdtString, encodeMdtString } = require("./mdtstring.js");
 const { mergePulls } = require("./merge.js");
 const { buildPlanLines, computeRouteKey } = require("./plan.js");
-const { loadNpcIds, assignDeathsToPulls } = require("./align.js");
+const { loadNpcIds, assignDeathsToPulls, mapPullsToFights } = require("./align.js");
 
 function main() {
   const [inputPath, outDir] = process.argv.slice(2);
@@ -26,12 +26,24 @@ function main() {
   if (aligned.unassigned.length > 0) {
     console.error("warn: " + aligned.unassigned.length + " deaths unassigned (route/log mismatch?)");
   }
-  const groups = mergePulls(aligned.windows, aligned.deathCounts);
-  if (input.wclWindows) {
-    const wclGroups = mergePulls(input.wclWindows, input.wclDeathCounts);
-    if (wclGroups.length !== groups.length) {
-      console.error("warn: merged waves route-space " + groups.length + " != wcl-space " + wclGroups.length);
-    }
+  // 合波判据只在 WCL fight 空间做（脱战信息只在那里可靠）；
+  // 再用对齐结果把每个路线 pull 映射回 fight，同波的路线 pull 合成一个 wave。
+  const fightGroups = mergePulls(input.wclWindows, input.wclDeathCounts);
+  const fightOfPull = mapPullsToFights(input.wclWindows, aligned);
+  const groups = [];
+  let pending = [];
+  let currentWave = null;
+  for (let i = 0; i < pulls.length; i++) {
+    const fight = fightOfPull[i];
+    if (fight === null) { pending.push(i + 1); continue; }
+    const wave = fightGroups.findIndex((g) => g.includes(fight)) + 1;
+    if (wave !== currentWave) { groups.push([]); currentWave = wave; }
+    groups[groups.length - 1].push(...pending, i + 1);
+    pending = [];
+  }
+  if (pending.length > 0) groups[groups.length - 1].push(...pending);
+  if (groups.length !== fightGroups.length) {
+    console.error("warn: merged waves " + groups.length + " != wcl-space " + fightGroups.length);
   }
   preset.value.pulls = groups.map((group) => {
     const merged = {};

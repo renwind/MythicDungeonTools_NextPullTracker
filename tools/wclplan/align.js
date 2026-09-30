@@ -41,4 +41,18 @@ function assignDeathsToPulls(pulls, npcIds, deathEvents) {
   return { windows, deathCounts, unassigned };
 }
 
-module.exports = { loadNpcIds, assignDeathsToPulls };
+// 把每个路线 pull 映射回它所属的 WCL fight（1-based）：用该 pull 死亡窗口中点
+// 落在哪个 fight 窗口内判定。零死亡 pull 无中点，返回 null，
+// 由调用方按「tag-only 并入下一波」处理（合波判据只在 fight 空间做）。
+function mapPullsToFights(fightWindows, aligned) {
+  return aligned.windows.map((w) => {
+    if (w.start === null || w.end === null) return null;
+    const mid = (w.start + w.end) / 2;
+    for (let i = 0; i < fightWindows.length; i++) {
+      if (mid >= fightWindows[i].start - 2 && mid <= fightWindows[i].end + 2) return i + 1;
+    }
+    return null;
+  });
+}
+
+module.exports = { loadNpcIds, assignDeathsToPulls, mapPullsToFights };

@@ -1,0 +1,508 @@
+{
+  "routeString": "!~MDT2~XZBPbxJBGMadP/sPll1AC6Rq0ujRmJBmD5J4EAFrW7S1PZiaxkRghmC3C2F3aZto4juATRoPejReLEX4Bp65ePEbePFsvDcx4WJoa1g8zjy/9zfzPoO8x/a94tNcceFxtri2cGtxMb/H2A5aqdQ4r5V92zvAOb9W2chlGg+qOxsre49aD+9bq1u3rULrhe2zwWrZbzaZ4637tn1p7eKw6Zds1mI2enJxkfedKqs7y5X91PGyy2xW9mp1502h4du2+36AhSSTwxChsqJqFCRT6JFYG1OpUK7b9ebSTc6tNOdDBBIGjUCUAjE7EziVAuUfNEEy/AsGlYBJQTFFNBYUWOleFNCULt3hvI9FKEzexuKXr8wlYiKsTwcmIz0MelBvpQfyITLMaCyOFUCqQFgDZIrUfOpq8KkMH1JhmHKbUEkVhGqCSqEz8FrqelDI+VACJHf1iKyoCkiqkGQNlBDgqS7DrXRfbofCmioUNR5cYaIYhAUmEUAGoASg5DTOnK0wCAsq6UAjAhMDaBLobKknOkgJgclsi725qee8u74OxACSBDLb4IkBOBn87gRfZw7bPci6bq3q7DLHcz8v1UsvWdlz271spTu+V33WOnqufh+P/A7+3eiG0Wm+6Lte1jk9z5tHxtc/d+fHo+q77V8fb3z7P++8/pC0C6/Go63spx8/jzen+V8=",
+  "mdtDungeonFile": "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns/MythicDungeonTools/Midnight/DenOfNalorakk.lua",
+  "deathEvents": [
+    {
+      "gameId": 241814,
+      "timestamp": 65468
+    },
+    {
+      "gameId": 241814,
+      "timestamp": 70678
+    },
+    {
+      "gameId": 241816,
+      "timestamp": 85050
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 87207
+    },
+    {
+      "gameId": 241816,
+      "timestamp": 88577
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 91243
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 93426
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 97704
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 97889
+    },
+    {
+      "gameId": 241816,
+      "timestamp": 98520
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 99819
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 99959
+    },
+    {
+      "gameId": 241808,
+      "timestamp": 100915
+    },
+    {
+      "gameId": 241814,
+      "timestamp": 171913
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 172202
+    },
+    {
+      "gameId": 245855,
+      "timestamp": 178577
+    },
+    {
+      "gameId": 241808,
+      "timestamp": 180121
+    },
+    {
+      "gameId": 241814,
+      "timestamp": 274369
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 289108
+    },
+    {
+      "gameId": 241808,
+      "timestamp": 295365
+    },
+    {
+      "gameId": 241812,
+      "timestamp": 453720
+    },
+    {
+      "gameId": 241814,
+      "timestamp": 511267
+    },
+    {
+      "gameId": 241814,
+      "timestamp": 528770
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 534104
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 543958
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 544091
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 544292
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 546442
+    },
+    {
+      "gameId": 241814,
+      "timestamp": 547691
+    },
+    {
+      "gameId": 241813,
+      "timestamp": 549565
+    },
+    {
+      "gameId": 241816,
+      "timestamp": 550572
+    },
+    {
+      "gameId": 241816,
+      "timestamp": 553926
+    },
+    {
+      "gameId": 241911,
+      "timestamp": 634824
+    },
+    {
+      "gameId": 241876,
+      "timestamp": 650074
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 650636
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 653028
+    },
+    {
+      "gameId": 241872,
+      "timestamp": 661788
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 662304
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 663410
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 666375
+    },
+    {
+      "gameId": 241872,
+      "timestamp": 667673
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 668809
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 671740
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 734218
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 735177
+    },
+    {
+      "gameId": 241808,
+      "timestamp": 737472
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 743029
+    },
+    {
+      "gameId": 241808,
+      "timestamp": 743030
+    },
+    {
+      "gameId": 241869,
+      "timestamp": 746961
+    },
+    {
+      "gameId": 241876,
+      "timestamp": 749281
+    },
+    {
+      "gameId": 241876,
+      "timestamp": 752284
+    },
+    {
+      "gameId": 241872,
+      "timestamp": 753256
+    },
+    {
+      "gameId": 241872,
+      "timestamp": 763628
+    },
+    {
+      "gameId": 250478,
+      "timestamp": 803789
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 824588
+    },
+    {
+      "gameId": 241876,
+      "timestamp": 826482
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 829387
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 832951
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 833440
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 844196
+    },
+    {
+      "gameId": 241872,
+      "timestamp": 847605
+    },
+    {
+      "gameId": 241872,
+      "timestamp": 848129
+    },
+    {
+      "gameId": 241869,
+      "timestamp": 848829
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 934481
+    },
+    {
+      "gameId": 241911,
+      "timestamp": 935507
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 940773
+    },
+    {
+      "gameId": 241872,
+      "timestamp": 944018
+    },
+    {
+      "gameId": 241874,
+      "timestamp": 950533
+    },
+    {
+      "gameId": 241872,
+      "timestamp": 952291
+    },
+    {
+      "gameId": 244100,
+      "timestamp": 1105531
+    },
+    {
+      "gameId": 245190,
+      "timestamp": 1190161
+    },
+    {
+      "gameId": 245145,
+      "timestamp": 1190550
+    },
+    {
+      "gameId": 245143,
+      "timestamp": 1192150
+    },
+    {
+      "gameId": 245143,
+      "timestamp": 1201755
+    },
+    {
+      "gameId": 245146,
+      "timestamp": 1205555
+    },
+    {
+      "gameId": 245190,
+      "timestamp": 1263005
+    },
+    {
+      "gameId": 245139,
+      "timestamp": 1276941
+    },
+    {
+      "gameId": 245143,
+      "timestamp": 1280661
+    },
+    {
+      "gameId": 245143,
+      "timestamp": 1282272
+    },
+    {
+      "gameId": 245146,
+      "timestamp": 1308213
+    },
+    {
+      "gameId": 245145,
+      "timestamp": 1309981
+    },
+    {
+      "gameId": 245146,
+      "timestamp": 1313943
+    },
+    {
+      "gameId": 245139,
+      "timestamp": 1338780
+    },
+    {
+      "gameId": 244889,
+      "timestamp": 1439206
+    },
+    {
+      "gameId": 245190,
+      "timestamp": 1515241
+    },
+    {
+      "gameId": 245139,
+      "timestamp": 1530739
+    },
+    {
+      "gameId": 245145,
+      "timestamp": 1541354
+    },
+    {
+      "gameId": 245190,
+      "timestamp": 1570524
+    },
+    {
+      "gameId": 245145,
+      "timestamp": 1585983
+    }
+  ],
+  "usage": [
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 1,
+      "asc": 0,
+      "pot": 0
+    }
+  ],
+  "wclWindows": [
+    {
+      "start": 22,
+      "end": 100
+    },
+    {
+      "start": 113,
+      "end": 179
+    },
+    {
+      "start": 189,
+      "end": 228
+    },
+    {
+      "start": 228,
+      "end": 452
+    },
+    {
+      "start": 467,
+      "end": 553
+    },
+    {
+      "start": 570,
+      "end": 875
+    },
+    {
+      "start": 876,
+      "end": 1105
+    },
+    {
+      "start": 1140,
+      "end": 1205
+    },
+    {
+      "start": 1221,
+      "end": 1427
+    },
+    {
+      "start": 1446,
+      "end": 1455
+    },
+    {
+      "start": 1460,
+      "end": 1669
+    }
+  ],
+  "wclDeathCounts": [
+    13,
+    4,
+    0,
+    4,
+    11,
+    31,
+    7,
+    5,
+    8,
+    0,
+    5
+  ],
+  "meta": {
+    "dungeon": "nalo",
+    "key": 22,
+    "report": "C9pFgkRJwMvHB4KY"
+  }
+}
