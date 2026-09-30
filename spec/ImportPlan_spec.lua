@@ -285,4 +285,27 @@ describe("Slash dispatch importplan", function()
       assert.equals(32182, MDT_NPT.CooldownPlan:Get("uid1", 2).entries[1].id)
     end)
   end)
+
+  it("/npt start 参数解析：last 传记住的 uid、数字传副本索引、非法打印用法", function()
+    scenario(function(env)
+      MDT_NPT:GetDBChar().lastImportedPlanUID = "uid-remembered"
+      _G.SlashCmdList = {}
+      mocks.loadSource("Modules/Slash.lua")
+      local captured = {}
+      local original = MDT_NPT.Start
+      MDT_NPT.Start = function(self, manual, retry, gen, challenge, override)
+        captured[#captured + 1] = override
+      end
+
+      MDT_NPT:Slash("start last")
+      MDT_NPT:Slash("start 161")
+      MDT_NPT:Slash("start bogus")
+      MDT_NPT:Slash("start")
+
+      MDT_NPT.Start = original
+      assert.equals(2, #captured)
+      assert.equals("uid-remembered", captured[1].uid)
+      assert.equals(161, captured[2].dungeon)
+    end)
+  end)
 end)

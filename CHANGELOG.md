@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format is based on 
 ### Added
 
 - `/npt importplan <routeKey> <wave> <spec>` and `/npt importplanpack <routeKey> <pack>`: import a cooldown plan generated offline from a WarcraftLogs report by `tools/wclplan` (waves cut by combat clusters, per-wave Bloodlust/Ascendance/potion uses derived from cast events). The pack form carries every wave in one chat line (`wave:l<a<p;...`, ~90 chars for an 11-wave route) so a whole plan is one paste instead of one per wave; both commands refuse to write anything when the route key doesn't match the current MDT preset, and the pack validates every wave up front so a bad pack can't leave half a plan behind.
+- `/npt start last` and `/npt start <dungeonIndex>`: force which route tracking follows. MDT registers each dungeon's overworld entrance zones, so standing in one makes plain `/npt start` track that dungeon by design; `last` follows the route you last imported a plan for (also the default when you are not in any registered zone), and the index form follows any dungeon (Den of Nalorakk is 161).
 
 ### Changed
 

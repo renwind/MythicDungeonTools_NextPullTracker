@@ -260,7 +260,7 @@ end
 -- Start / Stop
 -- =====================================================================
 
-function MDT_NPT:Start(manual, retryCount, generation, challengeExpected)
+function MDT_NPT:Start(manual, retryCount, generation, challengeExpected, override)
   retryCount = retryCount or 0
   if not generation then
     startGeneration = startGeneration + 1
@@ -270,37 +270,58 @@ function MDT_NPT:Start(manual, retryCount, generation, challengeExpected)
   if not db then db = self:GetDB() end
   if not db or not db.enabled then return end
 
-  local dungeonReady, detectedDungeonIndex = Mdt.syncMDTDungeonToPlayerZone(challengeExpected)
-  if dungeonReady == false then
-    if retryCount < 10 and C_Timer and C_Timer.After then
-      C_Timer.After(0.2, function()
-        if generation == startGeneration then
-          MDT_NPT:Start(manual, retryCount + 1, generation, challengeExpected)
-        end
-      end)
-    else
-      print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — the active Mythic+ dungeon could not be identified.")
+  -- 显式覆盖（/npt start last | /npt start <副本索引>）：玩家所在区域被登记成别的
+  -- 副本、或 MDT 选中项不可靠时手动指定跟哪条路线。
+  local preset
+  local detectedDungeonIndex
+  if override and override.uid then
+    preset = MDT.FindPresetByUID and MDT:FindPresetByUID(override.uid) or nil
+    if not preset then
+      print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — no remembered route with uid "..tostring(override.uid).."; import a plan first (/npt importplanpack).")
+      return
     end
-    return
-  end
+    detectedDungeonIndex = preset.value and preset.value.currentDungeonIdx
+  elseif override and override.dungeon then
+    detectedDungeonIndex = override.dungeon
+    preset = MDT:GetCurrentPreset(detectedDungeonIndex)
+    if not preset then
+      print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — no non-empty MDT route for dungeon "..tostring(detectedDungeonIndex)..".")
+      return
+    end
+  else
+    local dungeonReady
+    dungeonReady, detectedDungeonIndex = Mdt.syncMDTDungeonToPlayerZone(challengeExpected)
+    if dungeonReady == false then
+      if retryCount < 10 and C_Timer and C_Timer.After then
+        C_Timer.After(0.2, function()
+          if generation == startGeneration then
+            MDT_NPT:Start(manual, retryCount + 1, generation, challengeExpected, override)
+          end
+        end)
+      else
+        print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — the active Mythic+ dungeon could not be identified.")
+      end
+      return
+    end
 
-  -- Read the route for the dungeon we just detected explicitly. MDT's UI
-  -- initialization can replace or mutate its current selection while loading.
-  local preset = MDT:GetCurrentPreset(detectedDungeonIndex)
-  -- 主城/野外（不在任何副本区域）时 MDT 的「选中」不可靠：导入路线不写选中、
-  -- 赛季默认值还会顶掉手动选择。记住最后一次导入计划的路线 uid，优先跟它；
-  -- 钥匙内/副本内仍按区域走，不受影响。
-  if detectedDungeonIndex == nil then
-    local charDB = self:GetDBChar()
-    local uid = charDB and charDB.lastImportedPlanUID
-    if uid and (not preset or preset.uid ~= uid) then
-      preset = (MDT.FindPresetByUID and MDT:FindPresetByUID(uid)) or preset
+    -- Read the route for the dungeon we just detected explicitly. MDT's UI
+    -- initialization can replace or mutate its current selection while loading.
+    preset = MDT:GetCurrentPreset(detectedDungeonIndex)
+    -- 主城/野外（不在任何副本区域）时 MDT 的「选中」不可靠：导入路线不写选中、
+    -- 赛季默认值还会顶掉手动选择。记住最后一次导入计划的路线 uid，优先跟它；
+    -- 钥匙内/副本内仍按区域走，不受影响。
+    if detectedDungeonIndex == nil then
+      local charDB = self:GetDBChar()
+      local uid = charDB and charDB.lastImportedPlanUID
+      if uid and (not preset or preset.uid ~= uid) then
+        preset = (MDT.FindPresetByUID and MDT:FindPresetByUID(uid)) or preset
+      end
     end
-  end
-  if not preset then
-    local diagnostics = MDT.GetPresetDiagnostics and MDT:GetPresetDiagnostics() or "diagnostics unavailable"
-    print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — no non-empty MDT route is available ("..diagnostics..").")
-    return
+    if not preset then
+      local diagnostics = MDT.GetPresetDiagnostics and MDT:GetPresetDiagnostics() or "diagnostics unavailable"
+      print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — no non-empty MDT route is available ("..diagnostics..").")
+      return
+    end
   end
 
   local state = State.buildStateFromPreset(preset)

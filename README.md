@@ -29,7 +29,7 @@ Requires Mythic Dungeon Tools to be installed and enabled.
 
 ## Slash Commands
 
-- `/npt start` — start tracking the current preset
+- `/npt start` — start tracking the current preset (active key → your zone → last planned route → MDT selection); `/npt start last` forces the route you last imported a plan for, `/npt start <dungeonIndex>` forces a dungeon
 - `/npt stop` — stop tracking
 - `/npt status` — print the current pull's state and forces
 - `/npt skip <N>` — skip directly to pull N
