@@ -1219,6 +1219,7 @@ git commit -m "test: add +22 NALO end-to-end fixture"
 
 **Files:**
 - Create: `tools/wclplan/waves.js`、`tools/wclplan/waves.test.js`、`tools/wclplan/cli.test.js`
+- Create: `tools/wclplan/report.js`、`tools/wclplan/report.test.js`（本地网页展示：时间轴 + 波次表 + 复制按钮，读 cli 产物，不联网）
 - Modify: `tools/wclplan/align.js`（`assignDeathsToPulls` 增返 `deathPulls`/`deathSeconds`；新增 `loadEnemyMeta`）
 - Modify: `tools/wclplan/plan.js`（拆出 `specLines`；新增 `sumUsagePerWave`）
 - Modify: `tools/wclplan/cli.js`（`--granularity`、castEvents 归属、`lastWaveEnemies` 补挂、count=0 候选提示）
@@ -1277,15 +1278,23 @@ Expected: 10 passed —— 含新用例「Lua 侧对同一条 11 波路线算出
 
 注：`cli.test.js`/`waves.test.js` 的 fixture 用例要读本机 MDT 安装目录的副本 Lua（`input.mdtDungeonFile`），文件不存在时 skip 而非红。
 
+- [x] **Step 5b: 本地网页展示**
+
+Run: `node tools/wclplan/report.js tools/wclplan/fixtures/nalo22-C9pFgkRJwMvHB4KY.input.json .tmp-npt-task/nalo22-combat`
+Expected: 写出 `<out-dir>/report.html`（时间轴 SVG、路线串/plan 行带复制按钮、波次明细表、游戏内验证步骤）。cast 归属波次与 cli 生成 plan 行用同一套 `castWaves`，页面与 importplan 不会各说各话。
+
 - [x] **Step 6: 提交**
 
 ```bash
 git add tools/wclplan/waves.js tools/wclplan/waves.test.js tools/wclplan/cli.js tools/wclplan/cli.test.js \
         tools/wclplan/align.js tools/wclplan/align.test.js tools/wclplan/plan.js tools/wclplan/plan.test.js \
+        tools/wclplan/report.js tools/wclplan/report.test.js \
         tools/wclplan/fixtures/nalo22-C9pFgkRJwMvHB4KY.input.json spec/ImportPlan_spec.lua \
         docs/superpowers/plans/2026-09-30-wcl-to-mdt-npt-plan.md
 git commit -m "feat: cut waves by combat clusters, derive usage from cast events"
 ```
+
+（实际分两次入库：主提交 `7a0d3f7`；`report.js`/`report.test.js` 与 Step 5b 在后续提交单独入库。）
 
 ---
 
