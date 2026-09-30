@@ -362,8 +362,38 @@
   "usage": [
     {
       "lust": 0,
+      "asc": 1,
+      "pot": 1
+    },
+    {
+      "lust": 0,
       "asc": 0,
       "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 2,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 1,
+      "pot": 1
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
+      "asc": 4,
+      "pot": 1
     },
     {
       "lust": 0,
@@ -387,48 +417,8 @@
     },
     {
       "lust": 0,
-      "asc": 0,
-      "pot": 0
-    },
-    {
-      "lust": 0,
-      "asc": 0,
-      "pot": 0
-    },
-    {
-      "lust": 0,
-      "asc": 0,
-      "pot": 0
-    },
-    {
-      "lust": 0,
-      "asc": 0,
-      "pot": 0
-    },
-    {
-      "lust": 0,
-      "asc": 0,
-      "pot": 0
-    },
-    {
-      "lust": 0,
-      "asc": 0,
-      "pot": 0
-    },
-    {
-      "lust": 0,
-      "asc": 0,
-      "pot": 0
-    },
-    {
-      "lust": 0,
-      "asc": 0,
-      "pot": 0
-    },
-    {
-      "lust": 0,
-      "asc": 0,
-      "pot": 0
+      "asc": 2,
+      "pot": 1
     },
     {
       "lust": 0,
@@ -437,6 +427,16 @@
     },
     {
       "lust": 1,
+      "asc": 2,
+      "pot": 1
+    },
+    {
+      "lust": 0,
+      "asc": 0,
+      "pot": 0
+    },
+    {
+      "lust": 0,
       "asc": 0,
       "pot": 0
     }
