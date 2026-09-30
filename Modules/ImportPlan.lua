@@ -14,6 +14,7 @@ local ImportPlan = {}
 
 local VALID_KIND = { spell = true, item = true }
 local VALID_ACTION = { use = true, save = true }
+local HEX_DIGITS = "0123456789abcdef"
 
 -- entrySpec 语法: "id:kind:action[:uses]" 多条以 ";" 分隔。
 -- uses=1 不存（读侧缺省即 1）；>=2 才保留，与 CooldownPlan:SetUses 语义一致。
@@ -66,7 +67,15 @@ function ImportPlan.computeRouteKey(pulls)
   for i = 1, #s do
     hash = (hash * 31 + s:byte(i)) % 4294967296
   end
-  return string_format("%08x", hash)
+  -- 手写 hex，不用 string.format("%08x")：hash 可达 2^32-1，而各 Lua 版本对 %x 的
+  -- 整数语义不一致（5.1 按 unsigned int 截断、5.3 要求 integer、fengari 对 >=2^31 报错），
+  -- 手动逐位取能保证 5.1（游戏/CI）与 5.3/fengari（本地）输出逐字节相同。
+  local hex = ""
+  for i = 7, 0, -1 do
+    local digit = math.floor(hash / 16 ^ i) % 16
+    hex = hex .. HEX_DIGITS:sub(digit + 1, digit + 1)
+  end
+  return hex
 end
 
 ---@return boolean ok, string|nil err
@@ -103,6 +112,87 @@ function ImportPlan:apply(wave, entrySpec, routeKey)
   end
   CooldownPlan:SetFingerprint(preset.uid, wave, CooldownData.computePullFingerprint(pull, enemies))
   return true
+end
+
+-- planPack 语法（整包导入，一条聊天行）: "波:l<次>a<次>p<次>;波:..."
+-- 字母 = l 嗜血(32182 spell) / a 升腾(114050 spell) / p 药水(241308 item)；
+-- 次数 1-5（0 不写）、每波每字母至多一次、字母顺序任意（导出侧固定 l,a,p）。
+-- 与 tools/wclplan/plan.js buildPlanPack 互为镜像：同一条串两侧解析结果必须一致。
+local PACK_SKILL = {
+  l = { id = 32182, kind = "spell" },
+  a = { id = 114050, kind = "spell" },
+  p = { id = 241308, kind = "item" },
+}
+local PACK_ORDER = { "l", "a", "p" }
+
+---@return table|nil waves, string|nil err   waves[i] = { wave = n, spec = entrySpec }
+function ImportPlan.parsePlanPack(pack)
+  if type(pack) ~= "string" or pack == "" then return nil, "empty pack" end
+  local waves = {}
+  for token in pack:gmatch("[^;]+") do
+    local waveText, body = token:match("^(%d+):(.+)$")
+    local wave = tonumber(waveText or "")
+    if not wave or wave < 1 or wave % 1 ~= 0 then
+      return nil, "bad wave in token: " .. token
+    end
+    local seen, counts = {}, {}
+    for letter, countText in body:gmatch("([lap])(%d)") do
+      local count = tonumber(countText)
+      if seen[letter] then return nil, "duplicate skill in token: " .. token end
+      if not count or count < 1 or count > 5 then return nil, "bad count in token: " .. token end
+      seen[letter] = true
+      counts[letter] = count
+    end
+    if body:gsub("[lap]%d", "") ~= "" then
+      return nil, "bad body in token: " .. token
+    end
+    local spec = {}
+    for _, letter in ipairs(PACK_ORDER) do
+      local count = counts[letter]
+      if count then
+        local skill = PACK_SKILL[letter]
+        spec[#spec + 1] = count >= 2
+          and string_format("%d:%s:use:%d", skill.id, skill.kind, count)
+          or string_format("%d:%s:use", skill.id, skill.kind)
+      end
+    end
+    if #spec == 0 then return nil, "empty body in token: " .. token end
+    waves[#waves + 1] = { wave = wave, spec = string_concat(spec, ";") }
+  end
+  if #waves == 0 then return nil, "empty pack" end
+  return waves
+end
+
+-- 整包写入：先校验 routeKey 与全部波号，再逐波 apply，避免半套计划落库。
+---@return boolean ok, string|nil err, number|nil imported
+function ImportPlan:applyPack(pack, routeKey)
+  local waves, parseErr = ImportPlan.parsePlanPack(pack)
+  if not waves then return false, parseErr end
+  if type(routeKey) ~= "string" or #routeKey == 0 then
+    return false, "missing route key"
+  end
+
+  local preset = MDT and MDT.GetCurrentPreset and MDT:GetCurrentPreset()
+  if not preset or not preset.uid or preset.uid == "" then
+    return false, "no current preset uid; import the MDT route first"
+  end
+  local pulls = preset.value and preset.value.pulls
+  if not pulls then return false, "current preset has no pulls" end
+  local liveKey = ImportPlan.computeRouteKey(pulls)
+  if liveKey ~= routeKey then
+    return false, "route key mismatch: pack says " .. routeKey .. ", current preset is " .. liveKey
+  end
+  local seenWave = {}
+  for _, w in ipairs(waves) do
+    if not pulls[w.wave] then return false, "preset has no pull " .. w.wave end
+    if seenWave[w.wave] then return false, "duplicate wave in pack: " .. w.wave end
+    seenWave[w.wave] = true
+  end
+  for _, w in ipairs(waves) do
+    local ok, err = self:apply(w.wave, w.spec, routeKey)
+    if not ok then return false, err end
+  end
+  return true, nil, #waves
 end
 
 MDT_NPT.ImportPlan = ImportPlan

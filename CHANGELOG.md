@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format is based on 
 
 ## [Unreleased]
 
+### Added
+
+- `/npt importplan <routeKey> <wave> <spec>` and `/npt importplanpack <routeKey> <pack>`: import a cooldown plan generated offline from a WarcraftLogs report by `tools/wclplan` (waves cut by combat clusters, per-wave Bloodlust/Ascendance/potion uses derived from cast events). The pack form carries every wave in one chat line (`wave:l<a<p;...`, ~90 chars for an 11-wave route) so a whole plan is one paste instead of one per wave; both commands refuse to write anything when the route key doesn't match the current MDT preset, and the pack validates every wave up front so a bad pack can't leave half a plan behind.
+
 ### Changed
 
 - Ascendance seed `baseCD` corrected 180 → 120: the +22 Den of Nalorakk report (C9pFgkRJwMvHB4KY) shows 12 Ascendance casts with a minimum interval of exactly 120s (five of them on the 120~125s edge), so the old 180 contradicted live logs. The simc dump the old comment cited is not in the repo and could not be re-checked.

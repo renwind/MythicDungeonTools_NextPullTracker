@@ -21,6 +21,7 @@ function run(extraArgs) {
     summary: JSON.parse(fs.readFileSync(path.join(outDir, "summary.json"), "utf8")),
     route: fs.readFileSync(path.join(outDir, "route.mdt.txt"), "utf8").trim(),
     lines: fs.readFileSync(path.join(outDir, "importplan.txt"), "utf8").trim().split("\n"),
+    pack: fs.readFileSync(path.join(outDir, "importplan-pack.txt"), "utf8").trim(),
   };
   fs.rmSync(outDir, { recursive: true, force: true });
   return out;
@@ -45,6 +46,9 @@ test("combat 粒度：+22 洞穴报告切 11 波、boss 补挂、8 条 plan 行"
   const preset = decodeMdtString(out.route);
   assert.equal(preset.value.pulls.length, 11);
   assert.equal(preset.value.currentPull, 1);
+  // 整包命令：一条聊天行导完全部 8 波（与 Lua parsePlanPack 同语法）
+  assert.equal(out.pack,
+    "/npt importplanpack 4624dc42 1:l1a1p1;3:a2;4:a1p1;5:a1;7:l1a1;8:a2p1;10:a2p1;11:l1a2p1");
   // 最后一波含 boss 战 trio（25 Nalorakk / 26 Zul'jarra），否则被 NPT 零 forces 跳过
   const last = preset.value.pulls[10];
   assert.deepEqual(last["25"], [1]);

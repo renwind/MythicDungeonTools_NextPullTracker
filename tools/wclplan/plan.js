@@ -56,6 +56,28 @@ function sumUsagePerWave(waveCount, castEvents, waveOfCast) {
   return usage;
 }
 
+// planPack：整包导入的紧凑串 "波:l<次>a<次>p<次>;波:..."，一条聊天行放得下。
+// 字母与 id 的映射在 Lua 侧 ImportPlan.parsePlanPack 互为镜像，改一边必须改另一边。
+const PACK_LETTER = { lust: "l", asc: "a", pot: "p" };
+
+function buildPlanPack(waveUsage) {
+  const tokens = [];
+  waveUsage.forEach((usage, i) => {
+    let body = "";
+    for (const skill of SKILL_ORDER) {
+      const count = Math.min(5, usage[skill] || 0);
+      if (count < 1) continue;
+      body += PACK_LETTER[skill] + count;
+    }
+    if (body !== "") tokens.push((i + 1) + ":" + body);
+  });
+  return tokens.join(";");
+}
+
+function buildPlanPackLine(waveUsage, routeKey) {
+  return "/npt importplanpack " + routeKey + " " + buildPlanPack(waveUsage);
+}
+
 // 与 Lua 侧 ImportPlan.computeRouteKey 逐字节同公式：
 // 每波 "idx:count" 字典序排序后逗号连接，波之间分号连接，
 // 再对整串做 (hash*31+byte) mod 2^32 滚动哈希，输出 8 位小写 hex。
@@ -79,4 +101,4 @@ function computeRouteKey(pulls) {
   return hash.toString(16).padStart(8, "0");
 }
 
-module.exports = { buildEntrySpec, buildPlanLines, specLines, sumUsagePerWave, computeRouteKey, SKILL_IDS };
+module.exports = { buildEntrySpec, buildPlanLines, specLines, sumUsagePerWave, sumUsage, buildPlanPack, buildPlanPackLine, computeRouteKey, SKILL_IDS };

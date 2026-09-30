@@ -154,6 +154,89 @@ describe("ImportPlan apply", function()
   end)
 end)
 
+describe("ImportPlan planPack 整包导入", function()
+  before_each(function() mocks.reset() end)
+
+  it("解析 波:字母次数 语法并映射到固定 id", function()
+    scenario(function(env)
+      local waves, err = MDT_NPT.ImportPlan.parsePlanPack("1:l1a1p1;3:a2")
+      assert.is_nil(err)
+      assert.equals(2, #waves)
+      assert.equals(1, waves[1].wave)
+      assert.equals("32182:spell:use;114050:spell:use;241308:item:use", waves[1].spec)
+      assert.equals(3, waves[2].wave)
+      assert.equals("114050:spell:use:2", waves[2].spec)
+    end)
+  end)
+
+  it("真机产物整包串解析出 8 波，与逐行 spec 一一对应", function()
+    scenario(function(env)
+      local pack = "1:l1a1p1;3:a2;4:a1p1;5:a1;7:l1a1;8:a2p1;10:a2p1;11:l1a2p1"
+      local waves = MDT_NPT.ImportPlan.parsePlanPack(pack)
+      local expect = {
+        [1] = "32182:spell:use;114050:spell:use;241308:item:use",
+        [3] = "114050:spell:use:2",
+        [4] = "114050:spell:use;241308:item:use",
+        [5] = "114050:spell:use",
+        [7] = "32182:spell:use;114050:spell:use",
+        [8] = "114050:spell:use:2;241308:item:use",
+        [10] = "114050:spell:use:2;241308:item:use",
+        [11] = "32182:spell:use;114050:spell:use:2;241308:item:use",
+      }
+      assert.equals(8, #waves)
+      for _, w in ipairs(waves) do
+        assert.equals(expect[w.wave], w.spec)
+      end
+    end)
+  end)
+
+  it("非法 pack 报错：坏字母/次数 0 或 6/杂字符/重复字母/坏波号/空体", function()
+    scenario(function(env)
+      local bad = { "1:x1", "1:a0", "1:a6", "1:a1!", "1:a1a2", "0:a1", "a1", "1:", ":a1", "" }
+      for _, pack in ipairs(bad) do
+        local waves, err = MDT_NPT.ImportPlan.parsePlanPack(pack)
+        assert.is_nil(waves, "should reject: " .. pack)
+        assert.is_string(err)
+      end
+    end)
+  end)
+
+  it("applyPack 一次写入多波并返回波数", function()
+    scenario(function(env)
+      local preset = presetWith({ { [3] = { 1, 2 } }, { [5] = { 1 } }, { [7] = { 1 } } })
+      _G.MDT.GetCurrentPreset = function() return preset end
+      _G.MDT.dungeonEnemies = { [1] = enemiesFor(preset.value.pulls[1]) }
+      local key = MDT_NPT.ImportPlan.computeRouteKey(preset.value.pulls)
+
+      local ok, err, n = MDT_NPT.ImportPlan:applyPack("1:a2;3:l1", key)
+      assert.is_true(ok)
+      assert.is_nil(err)
+      assert.equals(2, n)
+      assert.equals(2, MDT_NPT.CooldownPlan:Get("uid1", 1).entries[1].uses)
+      assert.equals(32182, MDT_NPT.CooldownPlan:Get("uid1", 3).entries[1].id)
+    end)
+  end)
+
+  it("applyPack 校验失败整包不写：波越界 / routeKey 不符", function()
+    scenario(function(env)
+      local preset = presetWith({ { [3] = { 1 } }, { [5] = { 1 } } })
+      _G.MDT.GetCurrentPreset = function() return preset end
+      _G.MDT.dungeonEnemies = { [1] = enemiesFor(preset.value.pulls[1]) }
+      local key = MDT_NPT.ImportPlan.computeRouteKey(preset.value.pulls)
+
+      local ok1, err1 = MDT_NPT.ImportPlan:applyPack("1:a1;9:a1", key)
+      assert.is_false(ok1)
+      assert.is_string(err1)
+      assert.is_nil(MDT_NPT.CooldownPlan:Get("uid1", 1))
+
+      local ok2, err2 = MDT_NPT.ImportPlan:applyPack("1:a1", "deadbeef")
+      assert.is_false(ok2)
+      assert.is_string(err2)
+      assert.is_nil(MDT_NPT.CooldownPlan:Get("uid1", 1))
+    end)
+  end)
+end)
+
 describe("Slash dispatch importplan", function()
   before_each(function() mocks.reset() end)
 
@@ -182,6 +265,22 @@ describe("Slash dispatch importplan", function()
       mocks.loadSource("Modules/Slash.lua")
       MDT_NPT:Slash("importplan")
       assert.is_nil(MDT_NPT.CooldownPlan:Get("uid1", 1))
+    end)
+  end)
+
+  it("/npt importplanpack <routeKey> <pack> 整包落库", function()
+    scenario(function(env)
+      local preset = presetWith({ { [3] = { 1, 2 } }, { [5] = { 1 } } })
+      _G.MDT.GetCurrentPreset = function() return preset end
+      _G.MDT.dungeonEnemies = { [1] = enemiesFor(preset.value.pulls[1]) }
+      _G.SlashCmdList = {}
+      mocks.loadSource("Modules/Slash.lua")
+      local key = MDT_NPT.ImportPlan.computeRouteKey(preset.value.pulls)
+
+      MDT_NPT:Slash("importplanpack " .. key .. " 1:a2;2:l1")
+      assert.equals(1, #MDT_NPT.CooldownPlan:Get("uid1", 1).entries)
+      assert.equals(2, MDT_NPT.CooldownPlan:Get("uid1", 1).entries[1].uses)
+      assert.equals(32182, MDT_NPT.CooldownPlan:Get("uid1", 2).entries[1].id)
     end)
   end)
 end)

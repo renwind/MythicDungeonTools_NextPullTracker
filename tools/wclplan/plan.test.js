@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildEntrySpec, buildPlanLines, computeRouteKey, specLines, sumUsagePerWave } = require("./plan.js");
+const { buildEntrySpec, buildPlanLines, computeRouteKey, specLines, sumUsagePerWave, buildPlanPack, buildPlanPackLine } = require("./plan.js");
 
 test("entrySpec 语法 id:kind:action[:uses]，分号分隔", () => {
   const spec = buildEntrySpec({ lust: 1, asc: 2, pot: 1 });
@@ -60,6 +60,20 @@ test("sumUsagePerWave 按 cast 归属波计数，未知技能忽略", () => {
     { lust: 0, asc: 0, pot: 0 },
     { lust: 1, asc: 0, pot: 1 },
   ]);
+});
+
+test("buildPlanPack 紧凑语法：波:字母+次数，零波跳过，字母序固定 l,a,p", () => {
+  assert.equal(buildPlanPack([
+    { lust: 1, asc: 1, pot: 1 },
+    { lust: 0, asc: 0, pot: 0 },
+    { lust: 0, asc: 2, pot: 0 },
+  ]), "1:l1a1p1;3:a2");
+  assert.equal(buildPlanPack([{ pot: 7, lust: 1, asc: 0 }]), "1:l1p5");
+});
+
+test("buildPlanPackLine 带命令与 routeKey", () => {
+  assert.equal(buildPlanPackLine([{ lust: 1, asc: 1, pot: 1 }], "4624dc42"),
+    "/npt importplanpack 4624dc42 1:l1a1p1");
 });
 
 test("routeKey 对相同 pulls 稳定、clone 数变化即变化", () => {

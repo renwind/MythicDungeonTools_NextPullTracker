@@ -20,6 +20,7 @@ function main() {
   const input = JSON.parse(fs.readFileSync(inputPath, "utf8"));
   const summary = JSON.parse(fs.readFileSync(path.join(outDir, "summary.json"), "utf8"));
   const routeText = fs.readFileSync(path.join(outDir, "route.mdt.txt"), "utf8").trim();
+  const packLine = fs.readFileSync(path.join(outDir, "importplan-pack.txt"), "utf8").trim();
   const luaText = fs.readFileSync(input.mdtDungeonFile, "utf8");
 
   // 敌人名字/兵力（副本 Lua 里 name 紧跟 id/count）
@@ -197,8 +198,10 @@ ol code{color:#f0d9a8}
   <div class="bar"><button data-copy-target="route">复制路线串</button><span class="note">${routeText.length} 字符｜预设名「${preset.text}」</span></div>
 </div>
 
-<h2>② NPT 冷却计划（游戏内聊天框逐行粘贴，需先选中上面导入的预设）</h2>
+<h2>② NPT 冷却计划（需先选中上面导入的预设）</h2>
 <div class="card">
+  <div class="line"><code>${packLine}</code><button data-copy="${packLine.replace(/"/g, "&quot;")}">复制整包</button></div>
+  <div class="note" style="margin:2px 0 10px">整包命令：聊天框粘这一行回车，一次导完全部 ${summary.lines.length} 波（应回 imported cooldown plan for N pulls）。下面是逐行备用——WoW 聊天框是单行输入框，只能一条一条粘。</div>
   ${lineRows}
   <div class="bar"><button id="copyAll">复制全部 ${summary.lines.length} 行</button><span class="note">没有行的波 = 实战那一波没开嗜血/升腾/药水。routeKey 对不上插件会整批拒写。</span></div>
 </div>
@@ -217,7 +220,7 @@ ${rows}
 <div class="card"><ol>
 <li>插件已部署，进游戏先 <code>/reload</code></li>
 <li>MDT → Import → 粘贴 ① 的路线串，导入后<b>选中这个预设</b></li>
-<li>聊天框逐行粘贴 ② 的 ${summary.lines.length} 条命令（每条应回一行 imported cooldown plan for pull N）</li>
+<li>聊天框粘贴 ② 的整包行回车（应回 <code>imported cooldown plan for N pulls</code>）；要逐行核对就粘备用的 ${summary.lines.length} 条（每条回一行 imported cooldown plan for pull N）</li>
 <li>开钥匙后 <code>/npt start</code>，用 <code>/npt alert</code> 核对每波接战时播报的嗜血/升腾计划与 ③ 表一致</li>
 </ol></div>
 

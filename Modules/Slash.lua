@@ -221,6 +221,21 @@ local function handleImportPlan(rest)
   print(PREFIX..": imported cooldown plan for pull "..wave..".")
 end
 
+-- 整包导入（tools/wclplan 的 importplan-pack.txt 那一行）：一次粘完全部波。
+local function handleImportPlanPack(rest)
+  local routeKey, pack = rest:match("^(%S+)%s+(%S+)$")
+  if not routeKey or not pack then
+    print(PREFIX..": usage: "..CMD_COLOR.."/npt importplanpack <routeKey> <wave:l<a<p;...>|r")
+    return
+  end
+  local ok, err, n = MDT_NPT.ImportPlan:applyPack(pack, routeKey)
+  if not ok then
+    print(PREFIX..": importplanpack failed: "..tostring(err))
+    return
+  end
+  print(PREFIX..": imported cooldown plan for "..n.." pulls.")
+end
+
 -- ============ command table ============
 
 commands = {
@@ -235,6 +250,7 @@ commands = {
   { name = "settings", usage = "settings",    help = "open the settings panel",                           handler = handleSettings },
   { name = "plan",     usage = "plan",        help = "open the cooldown plan editor",                     handler = handlePlan },
   { name = "importplan", usage = "importplan <routeKey> <wave> <spec>", help = "import a generated cooldown plan for wave N", handler = handleImportPlan },
+  { name = "importplanpack", usage = "importplanpack <routeKey> <pack>", help = "import a whole generated plan in one line", handler = handleImportPlanPack },
   { name = "alert",    usage = "alert",       help = "repeat the next pull's cooldown reminder now",      handler = handleAlert },
   { name = "test",     usage = "test",        help = "run the integration test suite",                    handler = handleTest },
   { name = "help",     usage = "help",        help = "show this help message",                            handler = printHelp },

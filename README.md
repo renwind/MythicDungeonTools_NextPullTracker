@@ -37,6 +37,8 @@ Requires Mythic Dungeon Tools to be installed and enabled.
 - `/npt revert` — undo the most recent pull completion
 - `/npt show` / `/npt hide` — enable or disable the Beacon HUD
 - `/npt plan` — open the cooldown plan editor
+- `/npt importplan <routeKey> <wave> <spec>` — import one wave of a cooldown plan generated offline from a WCL report (`tools/wclplan`)
+- `/npt importplanpack <routeKey> <pack>` — same, but the whole plan in a single chat line
 - `/npt alert` — repeat the next pull's cooldown reminder now
 - `/npt settings` — open the settings panel
 - `/npt help` — list these commands

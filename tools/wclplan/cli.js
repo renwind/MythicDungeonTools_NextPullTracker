@@ -17,7 +17,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { decodeMdtString, encodeMdtString } = require("./mdtstring.js");
 const { mergePulls } = require("./merge.js");
-const { buildPlanLines, specLines, sumUsagePerWave, computeRouteKey } = require("./plan.js");
+const { buildPlanLines, specLines, sumUsagePerWave, sumUsage, buildPlanPackLine, computeRouteKey } = require("./plan.js");
 const { loadNpcIds, loadEnemyMeta, assignDeathsToPulls, mapPullsToFights } = require("./align.js");
 const { buildCombatWaveDetail, castWaves } = require("./waves.js");
 
@@ -104,6 +104,7 @@ function main() {
     waveUsage = combat.usage;
   } else {
     groups = fightGroups(input, pulls, aligned);
+    waveUsage = groups.map((group) => sumUsage(group, input.usage));
   }
 
   preset.value.pulls = groups.map((group) => {
@@ -125,18 +126,21 @@ function main() {
   const lines = granularity === "combat"
     ? specLines(waveUsage, routeKey)
     : buildPlanLines(groups, input.usage, routeKey);
+  const packLine = buildPlanPackLine(waveUsage, routeKey);
 
   fs.mkdirSync(outDir, { recursive: true });
   fs.writeFileSync(path.join(outDir, "route.mdt.txt"), encodeMdtString(preset) + "\n");
   fs.writeFileSync(path.join(outDir, "importplan.txt"), lines.join("\n") + "\n");
+  fs.writeFileSync(path.join(outDir, "importplan-pack.txt"), packLine + "\n");
   fs.writeFileSync(path.join(outDir, "summary.json"),
-    JSON.stringify({ meta: input.meta || {}, granularity, groups, routeKey, waveUsage, lines }, null, 2) + "\n");
+    JSON.stringify({ meta: input.meta || {}, granularity, groups, routeKey, waveUsage, lines, packLine }, null, 2) + "\n");
   reportUnusedBosses(luaText, preset.value.pulls);
   console.log("granularity: " + granularity);
   console.log("groups: " + JSON.stringify(groups));
   console.log("routeKey: " + routeKey);
+  console.log(packLine);
   console.log(lines.join("\n"));
-  console.log("wrote " + outDir + "/{route.mdt.txt,importplan.txt,summary.json}");
+  console.log("wrote " + outDir + "/{route.mdt.txt,importplan.txt,importplan-pack.txt,summary.json}");
 }
 
 // count=0 的敌人不占兵力，Threechest 的导出可能整条漏掉；列出来让人判断要不要
