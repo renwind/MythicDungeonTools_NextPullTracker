@@ -17,7 +17,8 @@ function mergePulls(windows, deathCounts, opts = {}) {
     const prev = i - 1;
     const joinPrevious = last && (
       deathCounts[prev] === 0 ||
-      windows[i].start - windows[prev].end < gap
+      (windows[prev].end !== null && windows[i].start !== null &&
+        windows[i].start - windows[prev].end < gap)
     );
     if (joinPrevious) last.push(i + 1);
     else groups.push([i + 1]);

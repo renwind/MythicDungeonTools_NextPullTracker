@@ -30,3 +30,8 @@ test("全零死亡的退化输入合并成单组不崩", () => {
 test("长度不一致抛错", () => {
   assert.throws(() => mergePulls(WINDOWS, DEATHS.slice(0, 3)), /length/);
 });
+
+test("零死亡波窗口为 null 时只靠零死亡判据合并", () => {
+  const w = [{ start: 0, end: 10 }, { start: null, end: null }, { start: 30, end: 40 }];
+  assert.deepEqual(mergePulls(w, [3, 0, 2]), [[1, 2], [3]]);
+});
