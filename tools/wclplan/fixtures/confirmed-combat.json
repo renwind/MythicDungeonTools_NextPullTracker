@@ -1,0 +1,37 @@
+{
+  "pullCount": 6,
+  "pullTimings": [
+    { "start": 0, "end": 50 },
+    { "start": 60, "end": 90 },
+    { "start": 100, "end": 145 },
+    { "start": 150, "end": 230 },
+    { "start": 240, "end": 350 },
+    { "start": 300, "end": 500 }
+  ],
+  "combatSegments": [
+    { "start": 0, "end": 55 },
+    { "start": 60, "end": 95 },
+    { "start": 100, "end": 510 }
+  ],
+  "bossEncounters": [
+    { "start": 300, "end": 500, "pull": 6, "firstPull": 5 }
+  ],
+  "castEvents": [
+    { "skill": "lust", "t": 10 },
+    { "skill": "asc", "t": 11 },
+    { "skill": "asc", "t": 110 },
+    { "skill": "asc", "t": 302 },
+    { "skill": "pot", "t": 302 },
+    { "skill": "asc", "t": 440 }
+  ],
+  "rotationCastEvents": [
+    { "type": "cast", "spellId": 117014, "t": 20 },
+    { "type": "cast", "spellId": 61882, "t": 30 },
+    { "type": "cast", "spellId": 61882, "t": 70 },
+    { "type": "cast", "spellId": 117014, "t": 120 },
+    { "type": "cast", "spellId": 61882, "t": 200 },
+    { "type": "cast", "spellId": 117014, "t": 310 },
+    { "type": "cast", "spellId": 117014, "t": 320 },
+    { "type": "cast", "spellId": 61882, "t": 330 }
+  ]
+}

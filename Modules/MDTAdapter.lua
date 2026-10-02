@@ -138,6 +138,9 @@ end
 -- 不依赖 MDT 的选中项：导入不写选中、赛季默认值还会顶掉手动选择。
 function Adapter:FindPresetByUID(uid)
   if type(uid) ~= "string" or uid == "" then return nil end
+  -- presets 藏在按需加载的 UI 插件里；不先 EnsureUIReady，主城/reload 后没开过 MDT
+  -- 时这张表还是空的，uid 查找会静默落空（与 GetCurrentPreset 保持同一前置）。
+  if not self:EnsureUIReady() then return nil end
   local api = publicAPI()
   local dbs = { api and api.GetDB and api:GetDB() or nil }
   local saved = _G.MythicDungeonToolsDB
@@ -154,6 +157,18 @@ function Adapter:FindPresetByUID(uid)
     end
   end
   return nil
+end
+
+-- 信标要渲染「追踪构建时所用的那条路线」，不是 MDT 此刻的选中项：导入后赛季默认值
+-- 会顶掉手动选择、同副本多次导入还会留下多条预设，GetCurrentPreset(dungeonIndex) 因此
+-- 可能返回另一条同副本路线。优先按 state.presetUID 精确定位，预设被删才退回当前选中。
+function Adapter:GetTrackedPreset(state)
+  if type(state) ~= "table" then return nil end
+  if type(state.presetUID) == "string" and state.presetUID ~= "" then
+    local preset = self:FindPresetByUID(state.presetUID)
+    if preset then return preset end
+  end
+  return self:GetCurrentPreset(state.dungeonIndex)
 end
 
 function Adapter:GetPresetDiagnostics()

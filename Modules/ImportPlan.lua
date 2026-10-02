@@ -107,6 +107,9 @@ function ImportPlan:apply(wave, entrySpec, routeKey)
   end
   local enemies = MDT.dungeonEnemies and MDT.dungeonEnemies[preset.value.currentDungeonIdx]
 
+  -- 整波以新 spec 为准：先清空旧条目与旧 uses。否则重导入把 uses 从 2 降回 1 时
+  -- （uses=1 不落 spec、SetUses 不被调用）会残留旧的 2，删除的条目也清不掉。
+  CooldownPlan:ClearPull(preset.uid, wave)
   for _, entry in ipairs(entries) do
     CooldownPlan:SetEntry(preset.uid, wave, entry.id, entry.kind, entry.action)
     if entry.uses then

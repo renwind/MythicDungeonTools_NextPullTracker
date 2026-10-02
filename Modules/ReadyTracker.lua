@@ -14,8 +14,6 @@ local DEFAULT_POTION_ITEM = 241308
 local CELL, GAP, PAD = 36, 6, 4  -- 格子边长 / 两格间距 / 窗口内边距
 local MIN_W, MAX_W = 60, 240     -- 格边长 24..114：再小塞不下倒计时，再大抢屏幕
 
--- 非 combo 时的边框色：与 createIconBorder 的默认黑一致，每拍直接刷回。
-local BLACK = { 0, 0, 0, 1 }
 local BORDER_KEYS = { "borderTop", "borderBottom", "borderLeft", "borderRight" }
 
 local frame
@@ -44,6 +42,8 @@ local function applySize(f, width)
       local size = math.floor(c.textBase[2] * cell / CELL + 0.5)
       c.text:SetFont(c.textBase[1], math.max(8, size), c.textBase[3])
     end
+    local _, fontSize = c.text:GetFont()
+    c.textBg:SetSize(cell, fontSize + 4)
   end
   f:SetSize(width, cell + PAD * 2)
 end
@@ -66,10 +66,18 @@ local function ensureFrame()
   frame:RegisterForDrag("LeftButton")
   frame:SetResizable(true)
   frame:SetResizeBounds(MIN_W, 20, MAX_W, 200)
-  frame.lustCell = Lust.makeCell(frame, true)
-  frame.lustCell:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -PAD)
   frame.potionCell = Lust.makeCell(frame, true)
-  frame.potionCell:SetPoint("TOPLEFT", frame.lustCell, "TOPRIGHT", GAP, 0)
+  frame.potionCell:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -PAD)
+  frame.lustCell = Lust.makeCell(frame, true)
+  frame.lustCell:SetPoint("TOPLEFT", frame.potionCell, "TOPRIGHT", GAP, 0)
+  for _, cell in ipairs({ frame.lustCell, frame.potionCell }) do
+    cell.textBg = cell:CreateTexture(nil, "BACKGROUND")
+    cell.textBg:SetPoint("BOTTOMLEFT", cell, "TOPLEFT", 0, 0)
+    cell.textBg:SetColorTexture(0, 0, 0, 0.65)
+    cell.textBg:Hide()
+    cell.text:ClearAllPoints()
+    cell.text:SetPoint("CENTER", cell.textBg, "CENTER", 0, 0)
+  end
   frame:SetScript("OnDragStart", function(self) self:StartMoving() end)
   frame:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
@@ -134,7 +142,6 @@ local function ensureFrame()
   return frame
 end
 
--- 八条边框一起染色：combo 窗口开 = 就绪绿，否则刷回默认黑。
 local function tintBorders(f, c)
   for _, cell in ipairs({ f.lustCell, f.potionCell }) do
     for _, key in ipairs(BORDER_KEYS) do
@@ -144,13 +151,14 @@ local function tintBorders(f, c)
 end
 
 local function paint(f)
+  Theme.Refresh()
   local lustReady, sid = Lust.lustReadyIn()
   local potionReady = Lust.potionReadyIn()
   Lust.paintCell(f.lustCell, lustReady, sid and C_Spell.GetSpellTexture(sid))
   Lust.paintCell(f.potionCell, potionReady, potionIcon())
-  -- 两者同时为 0 才是「一起开」的窗口期：只有这时边框染就绪色。
-  local combo = lustReady <= 0 and potionReady <= 0
-  tintBorders(f, combo and Theme.colors.lustReady or BLACK)
+  if lustReady > 0 then f.lustCell.textBg:Show() else f.lustCell.textBg:Hide() end
+  if potionReady > 0 then f.potionCell.textBg:Show() else f.potionCell.textBg:Hide() end
+  tintBorders(f, Theme.colors.accent)
 end
 
 local function tick()

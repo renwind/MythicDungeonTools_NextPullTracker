@@ -178,6 +178,14 @@ local function buildPanel()
     "readyTracker", L["Ready Tracker Window Tooltip"],
     nil, true)
 
+  makeBeaconBool(category, "MDTNPT_SPELL_RATIO_ORB", L["Spell Ratio Orb"],
+    "spellRatioOrb", L["Spell Ratio Orb Tooltip"],
+    function()
+      if MDT_NPT.SpellRatioOrb and MDT_NPT.SpellRatioOrb.Update then
+        MDT_NPT.SpellRatioOrb:Update()
+      end
+    end, true)
+
   -- Pull colors: a clickable live preview per state (dots + ring) plus a
   -- reset-to-defaults button, for the minimap dots and the outline around the
   -- current pull. Lives in a custom widget (see SettingsPullColors.lua); wrapped

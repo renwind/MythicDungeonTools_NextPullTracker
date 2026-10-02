@@ -423,7 +423,7 @@ local function create()
     if not uid then return end  -- not tracking yet: nothing to key the note by
     -- Same fetch path BeaconUpdate uses, so the fingerprint snapshots exactly
     -- the wave the beacon is currently showing.
-    local preset = MDT:GetCurrentPreset(state.dungeonIndex)
+    local preset = MDT:GetTrackedPreset(state)
     local pulls = preset and preset.value and preset.value.pulls
     MDT_NPT.noteEdit = {
       kind = "pull", uid = uid, pullIndex = pullIndex,

@@ -251,6 +251,23 @@ local function handleImportPlanPack(rest)
   print(PREFIX..": imported cooldown plan for "..n.." pulls.")
 end
 
+-- ImportRatio 在 Slash.lua 之后加载，因此只在命令执行时读取模块。
+local function handleImportRatioPack(rest)
+  local routeKey, pack = rest:match("^(%S+)%s+(%S+)$")
+  if not routeKey or not pack then
+    print(PREFIX..": usage: "..CMD_COLOR.."/npt importratiopack <routeKey> <eb36>.<eq36>,...|r "..DIM.."(base36; token order corresponds to wave order)|r")
+    return
+  end
+  local ok, err, n = MDT_NPT.ImportRatio:applyPack(pack, routeKey)
+  if not ok then
+    print(PREFIX..": importratiopack failed: "..tostring(err))
+    return
+  end
+  local orb = MDT_NPT.SpellRatioOrb
+  if orb and orb.Update then orb:Update() end
+  print(PREFIX..": imported spell ratios for "..n.." pulls.")
+end
+
 -- ============ command table ============
 
 commands = {
@@ -266,6 +283,7 @@ commands = {
   { name = "plan",     usage = "plan",        help = "open the cooldown plan editor",                     handler = handlePlan },
   { name = "importplan", usage = "importplan <routeKey> <wave> <spec>", help = "import a generated cooldown plan for wave N", handler = handleImportPlan },
   { name = "importplanpack", usage = "importplanpack <routeKey> <pack>", help = "import a whole generated plan in one line", handler = handleImportPlanPack },
+  { name = "importratiopack", usage = "importratiopack <routeKey> <eb36>.<eq36>,...", help = "import base36 WCL spell-ratio tokens; token order corresponds to wave order", handler = handleImportRatioPack },
   { name = "alert",    usage = "alert",       help = "repeat the next pull's cooldown reminder now",      handler = handleAlert },
   { name = "test",     usage = "test",        help = "run the integration test suite",                    handler = handleTest },
   { name = "help",     usage = "help",        help = "show this help message",                            handler = printHelp },

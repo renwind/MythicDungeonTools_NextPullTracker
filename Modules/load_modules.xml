@@ -18,6 +18,10 @@
   <Script file='CooldownData.lua'/>
   <Script file='CooldownPlan.lua'/>
   <Script file='ImportPlan.lua'/>
+  <Script file='SpellRatioData.lua'/>
+  <Script file='ImportRatio.lua'/>
+  <Script file='OrbLiquid.lua'/>
+  <Script file='SpellRatioOrb.lua'/>
   <Script file='CooldownPlanRender.lua'/>
   <Script file='CooldownLust.lua'/>
   <Script file='ReadyTracker.lua'/>

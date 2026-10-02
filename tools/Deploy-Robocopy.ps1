@@ -73,9 +73,10 @@ $AddonName = 'MythicDungeonTools_NextPullTracker'
 
 # 同步时需要排除的「开发专属」目录（相对仓库根，robocopy /XD 用绝对路径传入）
 # .qoder/.github/.tmp-npt-task：IDE/CI/临时任务目录，绝不进游戏目录
+# .tmp-wcl：WCL 导出的中间产物，里面 token.txt 是 OAuth 凭据（JWT）——绝不进游戏目录，也已在 .gitignore
 # docs：设计与实现计划文档（docs\superpowers\），只给开发看，插件运行时不读
 # 注意：Libs 不排除——toc 运行时加载 LibStub/CallbackHandler/AceDB，镜像必须带上
-$ExcludeDirs = @('tools', '.git', 'deploy', 'docs', '.qoder', '.github', '.tmp-npt-task')
+$ExcludeDirs = @('tools', '.git', 'deploy', 'docs', '.qoder', '.github', '.tmp-npt-task', '.tmp-wcl')
 
 # 同步时需要排除的「开发专属」文件（robocopy /XF 用绝对路径传入）
 $ExcludeFiles = @('.gitignore', '.gitattributes', 'README-DEV.md')

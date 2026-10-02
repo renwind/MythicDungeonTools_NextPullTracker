@@ -1,29 +1,28 @@
-// 用法: node tools/wclplan/cli.js <input.json> <out-dir> [--granularity=fight|combat]
-// 读输入 JSON（见 docs/superpowers/plans/2026-09-30-wcl-to-mdt-npt-plan.md 头部约定），写:
-//   <out-dir>/route.mdt.txt   合并后的 MDT 导入字符串
-//   <out-dir>/importplan.txt  每波一条 /npt importplan 行
-//   <out-dir>/summary.json    合并组、routeKey 与每波 usage，供人工核对
-//
-// granularity:
-//   fight  (默认) 按 WCL fight 窗口 + 死亡数合波，usage 取输入里的 input.usage（人工读报告）
-//   combat 按死亡时间簇合波（waves.js 规则），usage 由 input.castEvents 自动归属
-//
-// input.lastWaveEnemies: 需要补挂到最后一波的 MDT enemyIdx 数组。Threechest 导出的路线
-// 不含 count=0 的 boss（如纳洛拉克洞穴 25 Nalorakk / 26 Zul'jarra），少了它们最后一波
-// 会被 NPT 的零 forces 自动跳过；但补谁属于人工判断（同副本还有 27 Echo 之类召唤物），
-// 所以这里不猜，由输入显式给。
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
 const { decodeMdtString, encodeMdtString } = require("./mdtstring.js");
-const { mergePulls } = require("./merge.js");
-const { buildPlanLines, specLines, sumUsagePerWave, sumUsage, buildPlanPackLine, computeRouteKey } = require("./plan.js");
-const { loadNpcIds, loadEnemyMeta, assignDeathsToPulls, mapPullsToFights } = require("./align.js");
+const { specLines, sumUsagePerWave, sumUsage, buildPlanPackLine, computeRouteKey } = require("./plan.js");
+const { loadNpcIds, loadEnemyMeta, assignDeathsToPulls } = require("./align.js");
 const { buildCombatWaveDetail, castWaves } = require("./waves.js");
+const { assignRotationEvents, summarizeRotation, buildRatioPackLine } = require("./rotation.js");
+
+const USAGE = `usage: node tools/wclplan/cli.js <input.json> <out-dir> [--granularity=combat|fight]
+combat (default): count castEvents; fight: sum manually supplied per-pull usage.
+Both modes use the same evidence-based groups.
+pullTimings: one {start,end} or null per Threechest pull.
+combatSegments: verified continuous {start,end} intervals; not WCL summary windows.
+bossEncounters: {start,end,pull,firstPull?}; firstPull includes confirmed trailing trash.
+Times are seconds since the run started; pull numbers are 1-based.
+castEvents: {skill:asc|lust|pot,t,pull?}; explicit pull can locate a pre-combat cast.
+rotationCastEvents: required array of {type:cast,spellId:117014|61882,t}; successful casts only; assigned to final waves.
+Outputs: route.mdt.txt, importplan.txt, importplan-pack.txt, importratiopack.txt, summary.json.
+No continuity evidence means retain original boundaries, never infer from deaths.
+Example evidence: tools/wclplan/fixtures/confirmed-combat.json`;
 
 function parseArgs(argv) {
   const positional = [];
-  let granularity = "fight";
+  let granularity = "combat";
   for (const arg of argv) {
     if (arg.startsWith("--granularity=")) granularity = arg.slice("--granularity=".length);
     else if (arg.startsWith("--")) throw new Error("cli: unknown flag " + arg);
@@ -32,130 +31,145 @@ function parseArgs(argv) {
   if (granularity !== "fight" && granularity !== "combat") {
     throw new Error("cli: --granularity must be fight or combat, got " + granularity);
   }
+  if (positional.length !== 2) throw new Error("cli: input and output paths are required");
   return { inputPath: positional[0], outDir: positional[1], granularity };
 }
 
-// fight 粒度：合波判据只在 WCL fight 空间做（脱战信息只在那里可靠）；
-// 再用对齐结果把每个路线 pull 映射回 fight，同波的路线 pull 合成一个 wave。
-function fightGroups(input, pulls, aligned) {
-  const merged = mergePulls(input.wclWindows, input.wclDeathCounts);
-  const fightOfPull = mapPullsToFights(input.wclWindows, aligned);
-  const groups = [];
-  let pending = [];
-  let currentWave = null;
-  for (let i = 0; i < pulls.length; i++) {
-    const fight = fightOfPull[i];
-    if (fight === null) { pending.push(i + 1); continue; }
-    const wave = merged.findIndex((g) => g.includes(fight)) + 1;
-    if (wave !== currentWave) { groups.push([]); currentWave = wave; }
-    groups[groups.length - 1].push(...pending, i + 1);
-    pending = [];
+function manualUsage(usage, count) {
+  if (!Array.isArray(usage) || usage.length !== count) throw new Error("cli: usage must contain one entry per route pull");
+  for (const row of usage) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error("cli: invalid usage entry");
+    for (const [skill, value] of Object.entries(row)) {
+      if (!["asc", "lust", "pot"].includes(skill) || !Number.isInteger(value) || value < 0) {
+        throw new Error("cli: usage must contain non-negative integer skill counts");
+      }
+    }
   }
-  if (pending.length > 0) groups[groups.length - 1].push(...pending);
-  if (groups.length !== merged.length) {
-    console.error("warn: merged waves " + groups.length + " != wcl-space " + merged.length);
-  }
-  return groups;
+  return usage;
 }
 
-function combatGroups(input, aligned) {
-  const casts = input.castEvents || [];
-  const detail = buildCombatWaveDetail({
-    deathSeconds: aligned.deathSeconds,
-    deathPulls: aligned.deathPulls,
-    burstCasts: casts.filter((c) => c.skill !== "pot").map((c) => c.t),
-    ascCasts: casts.filter((c) => c.skill === "asc").map((c) => c.t),
-  });
-  const usage = sumUsagePerWave(detail.waves.length, casts, castWaves(casts, detail));
-  return { groups: detail.waves.map((w) => w.pulls), usage };
-}
-
-function main() {
-  let args;
-  try {
-    args = parseArgs(process.argv.slice(2));
-  } catch (err) {
-    console.error(err.message);
-    console.error("usage: node tools/wclplan/cli.js <input.json> <out-dir> [--granularity=fight|combat]");
-    process.exitCode = 2;
-    return;
-  }
-  const { inputPath, outDir, granularity } = args;
-  if (!inputPath || !outDir) {
-    console.error("usage: node tools/wclplan/cli.js <input.json> <out-dir> [--granularity=fight|combat]");
-    process.exitCode = 2;
-    return;
-  }
+function main({ inputPath, outDir, granularity }) {
   const input = JSON.parse(fs.readFileSync(inputPath, "utf8"));
   const luaText = fs.readFileSync(input.mdtDungeonFile, "utf8");
   const preset = decodeMdtString(input.routeString);
-  const pulls = preset.value.pulls;
-  const aligned = assignDeathsToPulls(pulls, loadNpcIds(luaText), input.deathEvents);
-  if (aligned.unassigned.length > 0) {
-    console.error("warn: " + aligned.unassigned.length + " deaths unassigned (route/log mismatch?)");
+  const pulls = preset.value && preset.value.pulls;
+  if (!Array.isArray(pulls) || !pulls.length) throw new Error("cli: route must contain pulls");
+  for (const pull of pulls) {
+    if (!pull || typeof pull !== "object") throw new Error("cli: invalid route pull");
+    for (const [key, clones] of Object.entries(pull)) {
+      if (!/^\d+$/.test(key)) continue;
+      if (!Array.isArray(clones) || clones.some(id => !Number.isInteger(id) || id < 1)) throw new Error("cli: invalid clone list");
+    }
   }
-
-  let groups;
+  const enemyMeta = loadEnemyMeta(luaText);
+  const pullMaxHealth = pulls.map(pull => {
+    let mx = 0;
+    for (const [idx, clones] of Object.entries(pull)) {
+      if (!/^\d+$/.test(idx)) continue;
+      if (Array.isArray(clones) && clones.length > 0) mx = Math.max(mx, (enemyMeta[idx] && enemyMeta[idx].health) || 0);
+    }
+    return mx;
+  });
+  const casts = input.castEvents ?? [];
+  const detail = buildCombatWaveDetail({
+    pullCount: pulls.length,
+    pullTimings: input.pullTimings,
+    combatSegments: input.combatSegments,
+    bossEncounters: input.bossEncounters,
+    castEvents: casts,
+    pullMaxHealth,
+  });
+  const groups = detail.waves.map(w => w.pulls);
+  const assignments = castWaves(casts, detail);
+  const rotationCastEvents = input.rotationCastEvents;
+  const rotationAssignments = assignRotationEvents(rotationCastEvents, detail.waves);
+  const rotationUsage = summarizeRotation(detail.waves.length, rotationCastEvents, rotationAssignments);
+  const warnings = detail.warnings.slice();
+  const unassigned = assignments.flatMap((wave, i) => wave === -1 ? [casts[i].t] : []);
   let waveUsage;
   if (granularity === "combat") {
-    if (!Array.isArray(input.castEvents)) throw new Error("cli: combat granularity needs input.castEvents");
-    const combat = combatGroups(input, aligned);
-    groups = combat.groups;
-    waveUsage = combat.usage;
+    if (!Array.isArray(input.castEvents)) throw new Error("cli: combat mode requires castEvents (an empty array means no casts)");
+    if (unassigned.length) throw new Error("cli: unassigned cast at " + unassigned.join(", ") + "; supply pullTimings or explicit cast pull");
+    waveUsage = sumUsagePerWave(groups.length, casts, assignments);
   } else {
-    groups = fightGroups(input, pulls, aligned);
-    waveUsage = groups.map((group) => sumUsage(group, input.usage));
+    const usage = manualUsage(input.usage, pulls.length);
+    waveUsage = groups.map(g => sumUsage(g, usage));
+    if (unassigned.length) warnings.push("Unassigned cast times: " + unassigned.join(", ") + "; plan counts come from manual usage.");
+  }
+  for (const [i, usage] of waveUsage.entries()) {
+    if (Object.values(usage).some(n => n > 5)) throw new Error("cli: NPT supports at most 5 uses per skill in wave " + (i + 1) + "; counts were not truncated or used to split the wave");
   }
 
-  preset.value.pulls = groups.map((group) => {
-    const merged = {};
+  const deathEvents = input.deathEvents ?? [];
+  if (!Array.isArray(deathEvents) || deathEvents.some(e => !e || !Number.isInteger(e.gameId) || e.gameId < 1 || !Number.isFinite(e.timestamp) || e.timestamp < 0)) {
+    throw new Error("cli: invalid deathEvents");
+  }
+  const aligned = assignDeathsToPulls(pulls, loadNpcIds(luaText), deathEvents);
+  if (aligned.unassigned.length) warnings.push(aligned.unassigned.length + " deaths have no matching route enemy; death alignment does not determine wave boundaries.");
+  const waveOfPull = new Map();
+  groups.forEach((g, i) => g.forEach(p => waveOfPull.set(p, i)));
+  const deaths = aligned.deathSeconds.map((t, i) => ({ t, wave: waveOfPull.get(aligned.deathPulls[i]) ?? null }));
+
+  preset.value.pulls = groups.map(group => {
+    const merged = Object.fromEntries(Object.entries(pulls[group[0] - 1]).filter(([key]) => !/^\d+$/.test(key)));
     for (const pullNumber of group) {
-      for (const [enemyIdx, clones] of Object.entries(pulls[pullNumber - 1])) {
-        merged[enemyIdx] = (merged[enemyIdx] || []).concat(clones);
+      for (const [key, clones] of Object.entries(pulls[pullNumber - 1])) {
+        if (/^\d+$/.test(key)) merged[key] = (merged[key] || []).concat(clones);
       }
     }
     return merged;
   });
-  const lastPull = preset.value.pulls[preset.value.pulls.length - 1];
-  for (const enemyIdx of input.lastWaveEnemies || []) {
-    lastPull[String(enemyIdx)] = (lastPull[String(enemyIdx)] || []).concat([1]);
+  const lastPull = preset.value.pulls.at(-1);
+  const extraEnemies = input.lastWaveEnemies ?? [];
+  if (!Array.isArray(extraEnemies) || extraEnemies.some(idx => !Number.isInteger(idx) || !enemyMeta[idx])) {
+    throw new Error("cli: invalid lastWaveEnemies");
+  }
+  for (const idx of extraEnemies) {
+    lastPull[idx] = lastPull[idx] || [];
+    if (!lastPull[idx].includes(1)) lastPull[idx].push(1);
   }
   preset.value.currentPull = 1;
-
   const routeKey = computeRouteKey(preset.value.pulls);
-  const lines = granularity === "combat"
-    ? specLines(waveUsage, routeKey)
-    : buildPlanLines(groups, input.usage, routeKey);
+  const lines = specLines(waveUsage, routeKey);
   const packLine = buildPlanPackLine(waveUsage, routeKey);
-
+  const ratioPackLine = buildRatioPackLine(rotationUsage, routeKey);
+  const summary = {
+    meta: input.meta || {}, granularity, groups, routeKey, waveUsage, lines, packLine,
+    waves: detail.waves, castEvents: casts, castAssignments: assignments,
+    rotationCastEvents, rotationAssignments, rotationUsage, ratioPackLine,
+    deaths, warnings,
+  };
+  const routeText = encodeMdtString(preset);
   fs.mkdirSync(outDir, { recursive: true });
-  fs.writeFileSync(path.join(outDir, "route.mdt.txt"), encodeMdtString(preset) + "\n");
+  fs.writeFileSync(path.join(outDir, "route.mdt.txt"), routeText + "\n");
   fs.writeFileSync(path.join(outDir, "importplan.txt"), lines.join("\n") + "\n");
   fs.writeFileSync(path.join(outDir, "importplan-pack.txt"), packLine + "\n");
-  fs.writeFileSync(path.join(outDir, "summary.json"),
-    JSON.stringify({ meta: input.meta || {}, granularity, groups, routeKey, waveUsage, lines, packLine }, null, 2) + "\n");
-  reportUnusedBosses(luaText, preset.value.pulls);
-  console.log("granularity: " + granularity);
+  fs.writeFileSync(path.join(outDir, "importratiopack.txt"), ratioPackLine + "\n");
+  fs.writeFileSync(path.join(outDir, "summary.json"), JSON.stringify(summary, null, 2) + "\n");
+  for (const warning of warnings) console.error("warn: " + warning);
   console.log("groups: " + JSON.stringify(groups));
   console.log("routeKey: " + routeKey);
   console.log(packLine);
-  console.log(lines.join("\n"));
-  console.log("wrote " + outDir + "/{route.mdt.txt,importplan.txt,importplan-pack.txt,summary.json}");
+  console.log(ratioPackLine);
+  console.log("wrote " + outDir + "/{route.mdt.txt,importplan.txt,importplan-pack.txt,importratiopack.txt,summary.json}");
 }
 
-// count=0 的敌人不占兵力，Threechest 的导出可能整条漏掉；列出来让人判断要不要
-// 用 lastWaveEnemies 补挂（boss 战若不在任何波里，NPT 会按零 forces 跳过）。
-function reportUnusedBosses(luaText, finalPulls) {
-  const meta = loadEnemyMeta(luaText);
-  const used = new Set();
-  for (const pull of finalPulls) for (const idx of Object.keys(pull)) used.add(Number(idx));
-  const unused = Object.keys(meta)
-    .map(Number)
-    .filter((idx) => meta[idx].count === 0 && !used.has(idx));
-  if (unused.length > 0) {
-    console.error("note: count=0 enemies absent from the route: " + unused.join(",") +
-      " (add to input.lastWaveEnemies if the final boss is missing)");
+if (process.argv.length === 3 && process.argv[2] === "--help") {
+  console.log(USAGE);
+} else {
+  let args;
+  try {
+    args = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    console.error(error.message + "\n" + USAGE);
+    process.exitCode = 2;
+  }
+  if (args) {
+    try {
+      main(args);
+    } catch (error) {
+      console.error(error.message);
+      process.exitCode = 1;
+    }
   }
 }
-
-main();

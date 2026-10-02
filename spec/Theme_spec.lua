@@ -21,6 +21,7 @@ describe("Theme.lua", function()
         "cdUse", "cdSave", "cdConflict", "cdMismatch", "cdEmpty",
         "lustNotReady", "lustReady",
         "settingsBoxBg", "swatchBorder",
+        "spellRatioElemental", "spellRatioEarthquake",
       }
       for _, key in ipairs(expectedKeys) do
         local c = Theme.colors[key]
@@ -30,6 +31,33 @@ describe("Theme.lua", function()
           assert.is_number(c[i], key .. "[" .. i .. "] must be a number")
         end
       end
+    end)
+  end)
+
+  describe("orb assets", function()
+    it("maps all nine orb textures under Media/orb", function()
+      local orb = Theme.textures.orb
+      assert.is_table(orb)
+      local prefix = "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Media\\orb\\"
+      local expected = {
+        back      = prefix .. "orb_back.tga",
+        filling   = prefix .. "orb_filling15.tga",
+        grid      = prefix .. "orb_grid1.tga",
+        bubbles1  = prefix .. "orb_rotation_bubbles1.tga",
+        bubbles2  = prefix .. "orb_rotation_bubbles2.tga",
+        spark     = prefix .. "orb_spark.tga",
+        sparkMask = prefix .. "orb_spark_mask.tga",
+        gloss     = prefix .. "orb_gloss.tga",
+        shadow    = prefix .. "orb_shadow.tga",
+      }
+      for key, path in pairs(expected) do
+        assert.equals(path, orb[key], "missing or wrong orb texture: " .. key)
+      end
+    end)
+
+    it("keeps the two spell ratio colors as opaque semantic tokens", function()
+      assert.same({ 179 / 255, 76 / 255, 255 / 255, 1 }, Theme.colors.spellRatioElemental)
+      assert.same({ 201 / 255, 144 / 255, 46 / 255, 1 }, Theme.colors.spellRatioEarthquake)
     end)
   end)
 

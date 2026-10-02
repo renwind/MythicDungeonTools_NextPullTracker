@@ -63,6 +63,9 @@ local defaultSavedVars = {
       -- v5: ready-tracker comparison window (design v5). Read on its own 0.5s
       -- poll by ReadyTracker, account-wide like the toggles above.
       readyTracker = true,
+      -- Independent WCL spell-ratio orb; it follows tracking state, not Beacon
+      -- visibility, and refreshes through UpdateAll rather than its own ticker.
+      spellRatioOrb = true,
       -- Per-state colors for the minimap pull DOTS. {r, g, b, a}. Keys match
       -- BeaconMinimap's pull states.
       pullColors = copyPalette(Theme.pullColors),
@@ -97,6 +100,7 @@ local defaultSavedVars = {
     -- Cooldown plan data, char-scoped (design 5.1). MUST stay under `char`
     -- (AceDB validateDefaults rejects unknown top-level keys).
     cooldownPlans = {},
+    rotationRatios = {},
     cooldownPotionID = 241308,   -- burst potion itemID default (Light's Potential ilvl295)
     _cooldownPlanVersion = 1,    -- migration version marker (design 5.4)
   },
@@ -240,6 +244,9 @@ function MDT_NPT:GetDBChar() return dbChar end
 function MDT_NPT:UpdateAll()
   if Beacon.Update then
     Beacon:Update()
+  end
+  if MDT_NPT.SpellRatioOrb and MDT_NPT.SpellRatioOrb.Update then
+    MDT_NPT.SpellRatioOrb:Update()
   end
   -- Keep the standalone plan editor in sync during active tracking (e.g. next
   -- pull advances). Route switches while idle are handled by the editor's own

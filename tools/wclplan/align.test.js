@@ -53,11 +53,33 @@ test("loadNpcIds 按 enemyIdx 顺序取 id", () => {
   assert.equal(npcIds[3], undefined);
 });
 
-test("loadEnemyMeta 取 id/count 与 clones 数（count=0 是 boss/召唤物）", () => {
+test("loadEnemyMeta 取 id/count/clones/health（count=0 是 boss/召唤物）", () => {
   const meta = loadEnemyMeta(META_SNIPPET);
-  assert.deepEqual(meta[1], { id: 241874, count: 4, clones: 3 });
-  assert.deepEqual(meta[2], { id: 246409, count: 0, clones: 1 });
+  assert.deepEqual(meta[1], { id: 241874, count: 4, clones: 3, health: 1234 });
+  assert.deepEqual(meta[2], { id: 246409, count: 0, clones: 1, health: 21891972 });
   assert.equal(meta[3], undefined);
+});
+
+test("loadEnemyMeta：敌人缺 health 字段时默认 0", () => {
+  const lua = [
+    "MDT.dungeonEnemies[dungeonIndex] = {",
+    "  [1] = {",
+    '    ["name"] = "NoHealth",',
+    '    ["id"] = 101,',
+    '    ["count"] = 5,',
+    '    ["clones"] = {',
+    "      [1] = {",
+    "      },",
+    "      [2] = {",
+    "      },",
+    "    },",
+    "  },",
+    "}",
+  ].join("\n");
+  const meta = loadEnemyMeta(lua);
+  assert.equal(meta[1].health, 0);
+  assert.equal(meta[1].count, 5);
+  assert.equal(meta[1].clones, 2);
 });
 
 test("assignDeathsToPulls 额外给出升序死亡秒数与逐死亡的 pull 归属", () => {

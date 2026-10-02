@@ -1,7 +1,7 @@
 local mocks = require("wow_mocks")
 
 -- ReadyTracker v5：嗜血/爆发药水就绪对照窗。0.5s 轮询手动触发（env.tickers[1]）。
--- 必须加载真 Theme.lua：stub 主题下任何颜色键都返回 {0,0,0,1}，就绪绿与黑框无法区分。
+-- 必须加载真 Theme.lua，避免 stub 的黑色默认值掩盖主题边框错误。
 local SATED_ID = 57724
 
 local function scenario(fn)
@@ -27,11 +27,9 @@ local function satedFor(env, seconds)
   end
 end
 
--- 共享 CD 源（env.cooldown 同时喂嗜血 CD 分支与药水使用效果分支）：
--- remaining = startTime + duration - now，倒推 startTime 得到指定剩余秒数。
-local function cdRemaining(env, remaining)
-  env.cooldown = { isEnabled = true, isActive = true,
-                   startTime = env.time + remaining - 300, duration = 300 }
+local function cdRemaining(env, remaining, itemID)
+  itemID = itemID or env.dbChar.cooldownPotionID or 241308
+  env.itemCooldowns[itemID] = { startTime = env.time + remaining - 300, duration = 300 }
 end
 
 -- 八条边框（两格 x 四边）的颜色收集成列表，断言一眼看全。
@@ -48,11 +46,21 @@ end
 describe("ReadyTracker 对照绘制", function()
   before_each(function() mocks.reset() end)
 
+  it("药水在左、嗜血在右，图标间距不变", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      tick(env)
+      local f = rt.getFrame()
+      assert.same({ "TOPLEFT", f, "TOPLEFT", 4, -4 }, f.potionCell.points[1])
+      assert.same({ "TOPLEFT", f.potionCell, "TOPRIGHT", 6, 0 }, f.lustCell.points[1])
+    end)
+  end)
+
   it("开关开：两格倒计时分别取嗜血与药水的就绪秒数（90 -> 1.5m，20 -> 20）", function()
     scenario(function(env, rt)
       env.db.beacon.readyTracker = true
-      satedFor(env, 90)          -- 嗜血 = max(sated 90, CD 20) = 90
-      cdRemaining(env, 20)       -- 药水共享使用效果 CD 剩 20
+      satedFor(env, 90)
+      cdRemaining(env, 20)
       tick(env)
       local f = rt.getFrame()
       assert.is_not_nil(f)
@@ -65,25 +73,50 @@ describe("ReadyTracker 对照绘制", function()
     end)
   end)
 
-  it("两者都到 0：八条边框全染就绪色且两格文本清空；任一仍 >0 则边框回黑", function()
+  it("冷却和就绪状态都保持 EUI 主题边框，图标与倒计时照常变化", function()
     scenario(function(env, rt)
       env.db.beacon.readyTracker = true
-      satedFor(env, nil)         -- 无 debuff、默认 CD 不激活 -> 两路都 0
       tick(env)
       local f = rt.getFrame()
       assert.equals("", f.lustCell.text:GetText())
       assert.equals("", f.potionCell.text:GetText())
-      local lr = MDT_NPT.Theme.colors.lustReady
-      local ready = { lr[1], lr[2], lr[3], lr[4] }
+      assert.equals(1, f.lustCell.icon.alpha)
+      assert.equals(1, f.potionCell.icon.alpha)
       for _, c in ipairs(borderColors(f)) do
-        assert.same(ready, c)
+        assert.same(MDT_NPT.Theme.colors.accent, c)
       end
 
-      satedFor(env, 10)          -- 嗜血又压回 10s：combo 窗口关闭
+      satedFor(env, 10)
       tick(env)
+      assert.equals("10", f.lustCell.text:GetText())
+      assert.equals("", f.potionCell.text:GetText())
+      assert.equals(0.45, f.lustCell.icon.alpha)
       for _, c in ipairs(borderColors(f)) do
-        assert.same({ 0, 0, 0, 1 }, c)
+        assert.same(MDT_NPT.Theme.colors.accent, c)
       end
+
+      cdRemaining(env, 20)
+      tick(env)
+      assert.equals("20", f.potionCell.text:GetText())
+      assert.equals(0.45, f.potionCell.icon.alpha)
+      for _, c in ipairs(borderColors(f)) do
+        assert.same(MDT_NPT.Theme.colors.accent, c)
+      end
+    end)
+  end)
+
+  it("独立轮询会跟随 EUI 主题色变化", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      local color = { 0.1, 0.5, 0.9, 1 }
+      _G.EllesmereUI = { GetAccentColor = function() return color[1], color[2], color[3] end }
+      tick(env)
+      local f = rt.getFrame()
+      for _, c in ipairs(borderColors(f)) do assert.same(color, c) end
+
+      color = { 0.2, 0.6, 0.8, 1 }
+      tick(env)
+      for _, c in ipairs(borderColors(f)) do assert.same(color, c) end
     end)
   end)
 end)
@@ -155,6 +188,107 @@ describe("ReadyTracker 药水图标", function()
       env.dbChar.cooldownPotionID = nil
       tick(env)
       assert.equals("item:241308", rt.getFrame().potionCell.icon.texture)
+    end)
+  end)
+end)
+
+describe("ReadyTracker 药水冷却来源", function()
+  before_each(function() mocks.reset() end)
+
+  it("技能CD未激活时仍显示物品的剩余CD与背景", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      cdRemaining(env, 180)
+      tick(env)
+      local f = rt.getFrame()
+      assert.equals("", f.lustCell.text:GetText())
+      assert.equals("3m", f.potionCell.text:GetText())
+      assert.equals(0.45, f.potionCell.icon.alpha)
+      assert.is_true(f.potionCell.textBg:IsShown())
+    end)
+  end)
+
+  it("物品无CD时不会把技能冷却误显示为药水CD", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      env.cooldown = { isEnabled = true, isActive = true, startTime = env.time, duration = 300 }
+      tick(env)
+      assert.equals("", rt.getFrame().potionCell.text:GetText())
+      assert.is_false(rt.getFrame().potionCell.textBg:IsShown())
+    end)
+  end)
+
+  it("自定义药水仅查询所选物品，不借用默认药水的CD", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      env.dbChar.cooldownPotionID = 999
+      cdRemaining(env, 180, 241308)
+      cdRemaining(env, 25, 999)
+      tick(env)
+      assert.equals("item:999", rt.getFrame().potionCell.icon.texture)
+      assert.equals("25", rt.getFrame().potionCell.text:GetText())
+    end)
+  end)
+
+  it("各品质和临时药水的残留CD都可读，不要求背包中仍有剩余", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      C_Item.GetItemCount = function() return 0 end
+      for _, itemID in ipairs({ 241308, 241309, 245898, 245897 }) do
+        env.itemCooldowns = {}
+        cdRemaining(env, 180, itemID)
+        tick(env)
+        assert.equals("3m", rt.getFrame().potionCell.text:GetText())
+      end
+    end)
+  end)
+
+  it("优先读取容器物品CD，缺失时读取C_Item", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      env.containerCooldowns[241308] = { startTime = env.time - 15, duration = 60 }
+      tick(env)
+      assert.equals("45", rt.getFrame().potionCell.text:GetText())
+      env.containerCooldowns = {}
+      cdRemaining(env, 25)
+      tick(env)
+      assert.equals("25", rt.getFrame().potionCell.text:GetText())
+    end)
+  end)
+
+  it("容器冷却不可读时仍能使用物品CD", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      C_Container.GetItemCooldown = function() return {}, {} end
+      cdRemaining(env, 20)
+      tick(env)
+      assert.equals("20", rt.getFrame().potionCell.text:GetText())
+    end)
+  end)
+
+  it("物品CD到期后清空倒计时和背景", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      cdRemaining(env, 20)
+      tick(env)
+      assert.equals("20", rt.getFrame().potionCell.text:GetText())
+      env.time = env.time + 20
+      tick(env)
+      assert.equals("", rt.getFrame().potionCell.text:GetText())
+      assert.equals(1, rt.getFrame().potionCell.icon.alpha)
+      assert.is_false(rt.getFrame().potionCell.textBg:IsShown())
+    end)
+  end)
+
+  it("忽略物品公共冷却和空冷却返回", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      env.itemCooldowns[241308] = { startTime = env.time, duration = 1.5 }
+      tick(env)
+      assert.equals("", rt.getFrame().potionCell.text:GetText())
+      C_Item.GetItemCooldown = function() return nil, nil end
+      tick(env)
+      assert.equals("", rt.getFrame().potionCell.text:GetText())
     end)
   end)
 end)
@@ -276,19 +410,74 @@ describe("ReadyTracker 点击穿透", function()
   end)
 end)
 
-describe("ReadyTracker 倒计时位置", function()
+describe("ReadyTracker 倒计时背景", function()
   before_each(function() mocks.reset() end)
 
-  it("对照窗的倒计时锚在图标上方（行格保持下方）", function()
+  it("倒计时在图标上方的等宽黑色半透明背景内居中", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      satedFor(env, 90)
+      cdRemaining(env, 20)
+      tick(env)
+      local f = rt.getFrame()
+      for _, cell in ipairs({ f.lustCell, f.potionCell }) do
+        local bg = cell.textBg
+        assert.is_not_nil(bg)
+        assert.equals("BACKGROUND", bg.layer)
+        assert.same({ 0, 0, 0, 0.65 }, bg.color)
+        assert.equals(cell:GetWidth(), bg:GetWidth())
+        assert.same({ "BOTTOMLEFT", cell, "TOPLEFT", 0, 0 }, bg.points[1])
+        assert.same({ "CENTER", bg, "CENTER", 0, 0 }, cell.text.points[1])
+        assert.equals(1, #cell.text.points)
+      end
+    end)
+  end)
+
+  it("背景跟随各自冷却显隐，就绪后不留空底色", function()
     scenario(function(env, rt)
       env.db.beacon.readyTracker = true
       tick(env)
       local f = rt.getFrame()
-      for _, cell in ipairs({ f.lustCell, f.potionCell }) do
-        local p = cell.text.points[1]
-        assert.equals("BOTTOM", p[1])
-        assert.equals(cell, p[2])
-        assert.equals("TOP", p[3])
+      assert.is_not_nil(f.lustCell.textBg)
+      assert.is_not_nil(f.potionCell.textBg)
+      assert.is_false(f.lustCell.textBg:IsShown())
+      assert.is_false(f.potionCell.textBg:IsShown())
+
+      satedFor(env, 30)
+      tick(env)
+      assert.is_true(f.lustCell.textBg:IsShown())
+      assert.is_false(f.potionCell.textBg:IsShown())
+
+      cdRemaining(env, 20)
+      tick(env)
+      assert.is_true(f.lustCell.textBg:IsShown())
+      assert.is_true(f.potionCell.textBg:IsShown())
+
+      satedFor(env, nil)
+      env.itemCooldowns = {}
+      tick(env)
+      assert.equals("", f.lustCell.text:GetText())
+      assert.equals("", f.potionCell.text:GetText())
+      assert.is_false(f.lustCell.textBg:IsShown())
+      assert.is_false(f.potionCell.textBg:IsShown())
+    end)
+  end)
+
+  it("初始尺寸及缩放后背景宽度等于图标，高度随字号保留上下内边距", function()
+    scenario(function(env, rt)
+      env.db.beacon.readyTracker = true
+      tick(env)
+      local f = rt.getFrame()
+      for _, width in ipairs({ f:GetWidth(), 60, 140, 240 }) do
+        f.grip.scripts.OnMouseDown(f.grip)
+        f:SetSize(width, 999)
+        f.grip.scripts.OnMouseUp(f.grip)
+        for _, cell in ipairs({ f.lustCell, f.potionCell }) do
+          assert.is_not_nil(cell.textBg)
+          local _, fontSize = cell.text:GetFont()
+          assert.equals(cell:GetWidth(), cell.textBg:GetWidth())
+          assert.equals(fontSize + 4, cell.textBg:GetHeight())
+        end
       end
     end)
   end)

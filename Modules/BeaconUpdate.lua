@@ -43,7 +43,7 @@ function Beacon:Update()
   local totalForcesMax = MDT.dungeonTotalCount[dungeonIndex] and MDT.dungeonTotalCount[dungeonIndex].normal or 1
   -- Keep rendering the route that tracking was built from even if MDT's UI
   -- changes its own current dungeon selection later.
-  local preset = MDT:GetCurrentPreset(dungeonIndex)
+  local preset = MDT:GetTrackedPreset(state)
   local pulls = preset and preset.value and preset.value.pulls
 
   local nextPull = state.currentNextPull

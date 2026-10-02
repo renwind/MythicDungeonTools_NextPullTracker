@@ -2,7 +2,7 @@ local mocks = require("wow_mocks")
 
 -- UpdateAll 是整个提醒功能唯一的触发点；漏掉这一行挂钩，前面所有代码都是死代码。
 describe("Core.lua UpdateAll 挂钩", function()
-  local frames, alertCalls, capturedDefaults
+  local frames, alertCalls, orbCalls, capturedDefaults
 
   local function fireOnEvent(event, ...)
     frames[1]._scripts.OnEvent(frames[1], event, ...)
@@ -55,6 +55,10 @@ describe("Core.lua UpdateAll 挂钩", function()
     _G.MDT_NPT.CooldownAlert = {
       OnUpdateAll = function() alertCalls = alertCalls + 1 end,
     }
+    orbCalls = 0
+    _G.MDT_NPT.SpellRatioOrb = {
+      Update = function() orbCalls = orbCalls + 1 end,
+    }
 
     local chunk = assert(loadfile("Core.lua"))
     chunk("MythicDungeonTools_NextPullTracker")
@@ -72,11 +76,24 @@ describe("Core.lua UpdateAll 挂钩", function()
     assert.has_no.errors(function() MDT_NPT:UpdateAll() end)
   end)
 
-  it("默认存档里提醒与就绪对照开关都是开的", function()
+  it("UpdateAll 每次都驱动技能配比球", function()
+    MDT_NPT:UpdateAll()
+    MDT_NPT:UpdateAll()
+    assert.equals(2, orbCalls)
+  end)
+
+  it("技能配比球模块缺席时 UpdateAll 不报错", function()
+    _G.MDT_NPT.SpellRatioOrb = nil
+    assert.has_no.errors(function() MDT_NPT:UpdateAll() end)
+  end)
+
+  it("默认存档里提醒、就绪对照与技能配比球开关都是开的", function()
     assert.is_not_nil(capturedDefaults)
     assert.is_true(capturedDefaults.global.beacon.alertVoice)
     assert.is_true(capturedDefaults.global.beacon.alertText)
     assert.is_true(capturedDefaults.global.beacon.lustAlert)
     assert.is_true(capturedDefaults.global.beacon.readyTracker)
+    assert.is_true(capturedDefaults.global.beacon.spellRatioOrb)
+    assert.same({}, capturedDefaults.char.rotationRatios)
   end)
 end)

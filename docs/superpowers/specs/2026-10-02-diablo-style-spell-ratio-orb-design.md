@@ -46,7 +46,9 @@
   ```lua
   OrbLiquid:New(parent, size) -> orb        -- size = 球体边长（正方形）
   orb:SetSplit(topTenths, bottomTenths)     -- 0..10 整数；top=元素冲击，bottom=地震术
-  orb:SetColors(topColor, bottomColor)      -- {r,g,b,a}
+  orb:SetColors(topColor, bottomColor)      -- {r,g,b,a}；top 先 bottom 后，与 SetSplit 一致
+  OrbLiquid.GridSize(size)                  -- 装饰环外接边长，96 → 126
+  OrbLiquid.GridOverhang(size)              -- 每边溢出量，96 → 15
   ```
   与项目既有约定一致，file scope 捕获 `local Theme = MDT_NPT.Theme`，贴图路径直接读 `Theme.textures.orb`，颜色由调用方经 `SetColors` 注入。各层 alpha（back / grid / gloss / shadow / bubble）是 `OrbLiquid.lua` 内的 file-local 常量，不进 DB、不进设置面板。
 
@@ -85,9 +87,9 @@
 | 6 | `overlay` | — | FrameLevel orb+2 | — | AllPoints(orb) | 6a-6e 全在其上，**不受任何裁剪** |
 | 6a | `sparkMask` | `orb_spark_mask` | MaskTexture | — | 110.4²（每边 +7.2） | `CLAMPTOBLACKADDITIVE`；**锚到 overlay，不锚到 spark** |
 | 6b | `spark` | `orb_spark` | BACKGROUND / -3 | **ADD** | 115.2 × 4.8 | `CENTER → eqClip TOP`，挂 mask = 分界线高光 |
-| 6c | `gloss` | `orb_gloss` | BACKGROUND / 3 | BLEND | 97.2² | TexCoord 同裁剪，alpha 0.8 |
-| 6d | `orbshadow` | `orb_shadow` | BACKGROUND / 3 | BLEND | 97.2² | `SetVertexColor(0,0,0)`，alpha 0.25；**创建顺序在 gloss 之后**，同 sublevel 靠创建顺序压在 gloss 上 |
-| 6e | `grid` | `orb_grid1` | BACKGROUND / **4** | BLEND | 126²（每边 +15） | alpha **0.9**（暗黑默认 0）。**保留原图色，不染色** |
+| 6c | `gloss` | `orb_gloss` | BACKGROUND / 3 | BLEND | 97.2² | TexCoord `(0.05,0.95,0.05,0.95)`，alpha 0.8 |
+| 6d | `orbshadow` | `orb_shadow` | BACKGROUND / 3 | BLEND | 97.2² | **无 TexCoord**（与暗黑一致，`units\player.lua:591-600` 不裁剪 shadow），`SetVertexColor(0,0,0)`，alpha 0.25；**创建顺序在 gloss 之后**，同 sublevel 靠创建顺序压在 gloss 上 |
+| 6e | `grid` | `orb_grid1` | BACKGROUND / **4** | BLEND | 126²（每边 +15） | alpha **1.0**（暗黑默认 0）；`SetVertexColor(0.38,0.38,0.38)` 中性压暗（0.38 为真机定值），见「配色」 |
 
 两处对暗黑的有意偏离：
 
@@ -99,7 +101,8 @@
 不能只靠「裁剪框高度归零自然不渲染」。液体和气泡都在裁剪框子树里，若只 `Hide()` 液体贴图，**气泡会作为孤儿继续旋转**，空球里凭空转着两团泡沫。因此：
 
 - 某一侧 `tenths == 0` 时，`Hide()` 该侧**整个裁剪框**（`eqClip` / `ebClip`），液体与气泡一并消失；`tenths > 0` 时 `Show()`。
-- `spark` 高光线仅在 `total > 0` 时 `Show()`。它锚在 `eqClip TOP`，而隐藏一个框不会使其锚点失效（几何仍然解算），所以 `total == 0` 时它会停在球底——那是没有液体的位置，必须显式隐藏。
+- **`spark` 高光线仅在两侧都 `> 0` 时 `Show()`。** 它的语义是「两种液体的交界弯月面」，只有一侧有液体时根本不存在交界。这条比「`total > 0`」更严，且是必需的：`spark` 锚在 `eqClip TOP`，而 `eq == 0` 时 `eqClip` 塌缩到球**底**，于是 `eb=10, eq=0`（整球紫）会把高光线画在球底边缘——而满球的液面其实在球顶，位置完全错开。反过来 `eb=0, eq=10` 时高光线在球顶，虽然位置对，但满球本就不需要一条交界线。两种情况都隐藏最干净。
+  隐藏框不会使其锚点失效（几何仍然解算），所以必须显式 `Hide()`，不能指望它自动消失。
 - `back` / `gloss` / `orbshadow` / `grid` 恒显。`total == 0` 时整球只剩这四层，即原设计要求的「暗色空球」。
 
 这条规则取代现有的 `setFillHeight()`（`SpellRatioOrb.lua:80-87`，靠 `SetHeight(0)` + `Hide()` 表达空液位），该辅助函数随之删除。
@@ -150,7 +153,15 @@ a₁ + b₁ = 10 且 a₀ + b₀ = 10  ⟹  A(t) + B(t) = 10
 1. **`eqScroll` / `ebScroll` 必须 `SetSize(orb)` + `SetPoint("BOTTOM", orb, "BOTTOM")`，绝不能锚到裁剪框。** 裁剪框高度随液位变化，其 CENTER 会上下移动；气泡若锚在它上面就会随液位「游泳」。锚到球体本身，中心永远稳定在球心。这也是暗黑要额外造一层 `scrollChild` 的真实原因。
 2. **旋转层必须故意做大**：气泡1 = 100.8² 对 96² 球（直径 +4.8px，每边 +2.4px）；气泡2 = 97.2²（直径 +1.2px，每边 +0.6px）。裁剪框才永远切进气泡场内部，气泡看起来是从液面下冒出/沉下去，而不是在一个可见的方块里打转。
 
-第 2 条依赖一个待实测确认的前提：`SetClipsChildren(true)` 的裁剪是否传播到**孙**级（气泡是 `scrollChild` 的子 region，而 `scrollChild` 才是 `clipFrame` 的子框）。暗黑线上版本依赖此行为且工作正常，据此认为传播成立，但仍列入游戏内验收必查项。
+第 2 条依赖的前提——`SetClipsChildren(true)` 是否裁到 `scroll` 框里的 region——**已有三条独立证据，不再是待验证假设**：
+
+1. 严格说这不是「孙级」情形。`clip:SetClipsChildren(true)` 裁的是它的**子框** `scroll`，而气泡是 `scroll` 的 **region**；一个框的 region 属于裁剪作用范围本身，不是再嵌套一层。
+2. 暗黑线上版本的拓扑与我们**逐行同构**：`player.lua:406`（`clipFrame:SetClipsChildren(true)`）→ `:421-425`（`scrollChild = CreateFrame("Frame", nil, clipFrame)`、`SetSize(orb:GetSize())`、`SetPoint("BOTTOM", orb, "BOTTOM")`）→ `:479/:482`（`createGalaxy(scrollChild, …)` 把超尺寸 ADD 气泡建成 `scrollChild` 的 region）。我们是照抄，不是新实验。
+3. 同一文件里还有第二处独立证明：`player.lua:411-412` 把 `filling2`——`clipFrame` **自己**的 region——设成 `SetAllPoints(orb)`，即在 `clipFrame` 塌缩到液位高度时它仍是满球尺寸，而它确实被裁住了。我们的 `createLiquid` 是同一形状，已经在依赖这个机制。
+
+仍列入游戏内验收，但改用**不可能看漏的探针**：临时把 `BUBBLE1_N` 调到 320、`BUBBLE_ALPHA` 调到 1.0 后 `/reload`，正常应看到液面处一条硬边裁切；若看到一个覆盖整球的亮方块就是裁剪没生效。168/160 的溢出量每边只有 2.4px，不放大几乎看不出方角。
+
+**已备好的退路**（万一裁剪真没覆盖到气泡）：把气泡改挂到 `clip` 上——`clip:CreateTexture(...)` + `SetPoint("CENTER", orb, "CENTER", 0, 0)`。这条路径由上面第 3 点的 `filling2` 先例证明一定被裁，且因为锚到 `orb` 而非 `clip`，中心依然稳定。代价是 `createBubble` 的 parent 实参与一处锚点，`eqScroll`/`ebScroll` 随之变成死代码可删。
 
 ## 几何
 
@@ -165,7 +176,7 @@ orb TOPLEFT  = frame TOPLEFT + (GRID_OVERHANG, -GRID_OVERHANG) = (15, -15)
 
 框体取 grid 环的外接矩形，使右下角缩放把手落在环的外角、且 `SetClampedToScreen` 的夹取范围与可见美术一致。
 
-20px 图标仍锚 `orb TOPRIGHT +3,-3`：换算后落在 x∈[104,124]、y∈[2,22]，在 126 宽的框内尚有 2px 余量，**无需额外加宽**。比例文字仍锚 grid 底部 -2。
+20px 图标仍锚 `orb TOPRIGHT +3,-3`：换算后中心落在框内 `(114, 18)`，即 x∈[104,124]、**y∈[8,28]**（WoW 的 y 偏移正值向上，所以 `-3` 是从球顶再往下 3px；球顶本身已在框内 y=15）。x 方向在 126 宽的框内尚有 2px 余量，**无需额外加宽**；y 方向 28 < 144 也放得下。比例文字仍锚 grid 底部 -2，落在 y∈[128,144]。
 
 `INNER_SIZE`（原 60）这个概念消失——液体直接 AllPoints 到 orb，不再有独立的内圆。
 
@@ -175,7 +186,7 @@ Alt 拖拽移动、Alt+把手缩放 `0.5–2.0`（等效 63×72 ~ 252×288）、
 
 ## 配色
 
-- **`orb_grid1` 装饰环保留原图色，不做 `SetVertexColor` 染色。** 这是明确决定：项目里存在「边框跟随 EUI 主题色」的既有约定（BeaconFrame 地图边框、底带白边），但本处用户明确要求保留参考美术原色。实施与后续审查都**不得**把它「修正」回 `Theme.colors.accent`。
+- **`orb_grid1` 装饰环：保留原图美术，但用中性灰顶点色整体压暗，且不透明度提到 1.0。** 初版按「保留原图色、不染色」实现，真机验收时用户反馈金属环太亮、太「铬」，要求降饱和度与亮度。实测 `orb_grid1.tga` 的非透明像素均值是 **55.8/55.8/55.8——纯灰度**，带 255 的镜面高光，所以美术本身没有色相可降；用户看到的「饱和」来自 `alpha 0.9` 时饱和的游戏背景从环里透出来加的一层蓝调，「亮」来自那些白色高光。因此两处修正：`alpha 0.9 → 1.0`（去掉背景透色），`SetVertexColor(0.38, 0.38, 0.38)`（中性逐通道相乘，只降亮度不加色相；0.68 试过一次仍偏亮，0.38 为真机定值）。**仍然不得染成 `Theme.colors.accent`**——那是项目「边框跟主题色」约定在本处的既有例外，spec 用「三通道相等」钉住中性。
 - 由于球体不再消费任何 EUI 派生色，`SpellRatioOrb.lua:311-313` 现有的 `Theme.Refresh()` 与 `f.ring:SetColorTexture(accent...)` 一并删除。比例文字用的 `Theme.colors.textPrimary` 本就只在创建时读取一次，故无回归。
 - **`orb_back` alpha 定为 0.4**（暗黑默认 0.1）。理由：0:0 空球态下整球只剩 `back` 可见，0.1 几乎看不见，会退化成「球消失了」。0.4 为初版取值，属可调参数。
 - 两个技能色 `#B34CFF` / `#C9902E` 从 `SpellRatioOrb.lua:18-19` 的 file-local 提到 `Theme.FALLBACK`，命名 `spellRatioElemental` / `spellRatioEarthquake`，归入该表已有的「semantic colours — not derived from accent」段落（与 `mobBoss`、`cdUse` 同类）。
@@ -198,7 +209,7 @@ Alt 拖拽移动、Alt+把手缩放 `0.5–2.0`（等效 63×72 ~ 252×288）、
 
 同文件记录过一次真实事故：曾臆造 `SetOnFinished`，产品代码调用了不存在的方法而 spec 全绿。
 
-当前 mock 里 **StatusBar 相关 API 一个都没有**：`CreateFrame("StatusBar")` 不按 kind 分化（`:328`），缺 `SetClipsChildren`、`SetOrientation`、`SetReverseFill`、`SetStatusBarTexture`、`GetStatusBarTexture`、`SetStatusBarColor`、`SetValue(v, interpolation)`、`SetBlendMode`、`SetAllPoints`。
+当前 mock 里 **StatusBar 相关 API 一个都没有**：`CreateFrame("StatusBar")` 不按 kind 分化（`:328`），缺 `SetClipsChildren`、`SetOrientation`、`SetReverseFill`、`SetStatusBarTexture`、`GetStatusBarTexture`、`SetStatusBarColor`、`SetValue(v, interpolation)`、`SetBlendMode`、`SetDrawLayer`，以及 `CreateTexture` 的第 4 个 `sublayer` 参数与 Rotation 动画的 `SetDegrees`。（`SetAllPoints` 已存在于 `:134`，不需补。）
 
 补齐原则：**只加录制型 stub，不模拟行为**。`GetStatusBarTexture()` 必须返回一个真实的录制 region，否则裁剪框锚点断言无从写起。补 `Enum.StatusBarInterpolation` 常量表。**严禁臆造任何客户端不存在的方法**——补之前逐条对照暗黑线上代码确认该 API 真实存在。
 
@@ -213,7 +224,7 @@ Alt 拖拽移动、Alt+把手缩放 `0.5–2.0`（等效 63×72 ~ 252×288）、
 | `creates the named 64/60 orb and 20px icons without a ticker` | :113 | 几何固定、无高频 ticker | 96/126 + 图标仍 20px + `#env.tickers == 0` |
 | `defaults to scale one without changing base geometry` | :130 | scale 1 时框体基准尺寸 | 126 × 144 |
 | `attaches real circular masks and places purple above orange` | :179 | 遮罩真实挂接 + 紫上金下 | 两个 clip 框 `clipsChildren == true`；eb 侧 driver 有 `SetReverseFill(true)` 且 `orientation == "VERTICAL"`；两液均 `SetAllPoints(orb)`（**不是** AllPoints 到裁剪框）；紫液属 `ebClip`、金液属 `eqClip` |
-| `uses Theme.colors.accent for the outer ring` | :195 | 外圈跟随主题 | **删除**。改为断言 `grid` 未调用 `SetVertexColor`（锁定「保留原图色」这一决定，防止将来被误改回主题色） |
+| `uses Theme.colors.accent for the outer ring` | :195 | 外圈跟随主题 | **删除**。改为断言 `grid` 的顶点色是**三通道相等的中性灰**（锁定「只压暗、不加色相、不跟主题」这一决定，防止将来被误改回主题色或某个带色相的值） |
 | `renders exact 8:2 heights, text and Elemental Blast icon` | :257 | 8:2 → 精确液位 + 文字 + 图标 | `ebDriver:SetValue(8, ease)` / `eqDriver:SetValue(2, ease)`；文字与图标断言不变 |
 | `keeps both nonzero sides visible at a minimum ten-percent fill` | :277 | 双方非零保底 10% | `SetValue(1)` / `SetValue(9)`，文字仍 `0:10` |
 | `rounds fill levels to the nearest ten-percent boundary` | :288 | `14%→10%`、`15%→20%` | SetValue 入参 `1/9` 与 `2/8` |
@@ -228,7 +239,7 @@ Alt 拖拽移动、Alt+把手缩放 `0.5–2.0`（等效 63×72 ~ 252×288）、
 ### 新增 spec
 
 - **`spec/OrbLiquid_spec.lua`**：driver bar 为 `VERTICAL` + `alpha 0`、元素侧有 `SetReverseFill(true)`；两个 clip 框 `clipsChildren == true` 且移动边锚到对应 driver 贴图；液体 `SetAllPoints(orb)`；气泡 parent 是 scroll 框、且尺寸**大于** orb（锁定「故意溢出」）；scroll 框锚到 orb 而非 clip 框（锁定「不游泳」）；创建 4 个 rotation 组 + 4 个 alpha 组且全部 `IsPlaying()`；**每个 Alpha 动画都有显式 from 与 to**（专防暗黑那个坑）；镜像层的 Alpha `order` 被对调；`SetSplit` 传入 0 时隐藏对应 clip 框、传入非零时恢复（锁定「零液位可见性规则」，防孤儿气泡）。
-- **`spec/SpellRatioData_spec.lua` 增补**：`FillTenths` 与 `RatioTenths` 的分歧用例——`1/46 → FillTenths 1:9 而 RatioTenths 0:10`、`14%→1`、`15%→2`、单侧为零时 `0:10`、`0:0` 时 `0:0`。纯函数，零 UI mock。
+- **`spec/SpellRatioData_spec.lua` 增补**：`FillTenths` 与 `RatioTenths` 的分歧用例——`1/46 → FillTenths 1:9 而 RatioTenths 0:10`、`14%→1`、`15%→2`、单侧为零时 `0:10`、`45/1 → 9:1`（上限 clamp，与下限对称）、`0:0` 时**两者都返回 nil**（调用方据此把两侧 driver 都设 0）、以及不带 `fingerprint` 的行仍可计算（钉住用的是 `validInteger` 而非更严的 `validRow`）。纯函数，零 UI mock。
 
 ### 游戏内验收清单
 
@@ -239,7 +250,7 @@ Alt 拖拽移动、Alt+把手缩放 `0.5–2.0`（等效 63×72 ~ 252×288）、
 3. `0:0` 波次两侧全空，只露 `orb_back` 暗底 + gloss/shadow/grid（alpha 0.4 是否够看得见），**且球内没有孤儿气泡在转、球底没有残留高光线**。单侧为零（如 `0:10`）时同理：空的那一侧不得有气泡。
 4. 气泡被液面**裁断**，不在方块内打转；液位变化时气泡不上下「游泳」。→ 直接验证「结构陷阱」两条与孙级裁剪传播。
 5. `spark` 高光线正好压在紫/金分界线上，两端被圆形遮罩切掉，不溢出球体。
-6. `orb_grid1` 装饰环为**原图色**，不遮挡右上技能图标，不与文字重叠。
+6. `orb_grid1` 装饰环为**中性压暗的暗钢色**（不跟主题色，也不是初版的亮铬色），不遮挡右上技能图标，不与文字重叠。亮度旋钮是 `OrbLiquid.lua` 的 `GRID_TINT`。
 7. `gloss` / `orbshadow` 叠出玻璃质感，环压在二者之上保持锐利。
 8. Alt 拖拽移动、Alt+右下角把手缩放（0.5–2.0）、松手持久化、`/reload` 后位置与缩放恢复，全部仍正常。
 9. 非 Alt 态点击穿透，能点到球下方的游戏 UI。

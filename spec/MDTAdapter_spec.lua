@@ -94,6 +94,64 @@ describe("MDTAdapter.lua", function()
     assert.is_nil(adapter:FindPresetByUID(nil))
   end)
 
+  it("loads MDT's UI addon before finding a preset by uid", function()
+    -- presets live behind the load-on-demand UI addon; without EnsureUIReady the
+    -- table is still nil and /npt start last silently finds nothing.
+    local uiLoaded = false
+    local db = { currentDungeonIdx = 42, currentPreset = {}, presets = nil }
+    _G.MythicDungeonToolsAPI = { GetDB = function() return db end }
+    _G.C_AddOns = {
+      IsAddOnLoaded = function() return uiLoaded end,
+      LoadAddOn = function(addonName)
+        assert.equals("MythicDungeonTools_UI", addonName)
+        uiLoaded = true
+        db.presets = { [42] = { [1] = { uid = "ruby-uid", value = { pulls = { {} } } } } }
+        return true
+      end,
+    }
+
+    local adapter = loadAdapter({ L = {} })
+    local found = adapter:FindPresetByUID("ruby-uid")
+    assert.is_true(uiLoaded)
+    assert.equals("ruby-uid", found and found.uid)
+  end)
+
+  it("resolves the tracked route by uid, not MDT's drifted dungeon selection", function()
+    -- MDT's season default can re-point currentPreset[42] at another Ruby route
+    -- after import; the beacon must still render the route tracking was built from.
+    local db = {
+      currentDungeonIdx = 42,
+      currentPreset = { [42] = 1 },
+      presets = { [42] = {
+        [1] = { uid = "old-ruby", value = { currentDungeonIdx = 42, pulls = { {} } } },
+        [2] = { uid = "tracked-ruby", value = { currentDungeonIdx = 42, pulls = { {} } } },
+      } },
+    }
+    _G.MythicDungeonToolsDB = { global = db }
+
+    local adapter = loadAdapter({ L = {} })
+    assert.equals("old-ruby", adapter:GetCurrentPreset(42).uid)
+    local tracked = adapter.GetTrackedPreset
+      and adapter:GetTrackedPreset({ presetUID = "tracked-ruby", dungeonIndex = 42 })
+    assert.equals("tracked-ruby", tracked and tracked.uid)
+  end)
+
+  it("falls back to the dungeon's current preset when the tracked uid is gone", function()
+    local db = {
+      currentDungeonIdx = 42,
+      currentPreset = { [42] = 1 },
+      presets = { [42] = {
+        [1] = { uid = "old-ruby", value = { currentDungeonIdx = 42, pulls = { {} } } },
+      } },
+    }
+    _G.MythicDungeonToolsDB = { global = db }
+
+    local adapter = loadAdapter({ L = {} })
+    local tracked = adapter.GetTrackedPreset
+      and adapter:GetTrackedPreset({ presetUID = "deleted-uid", dungeonIndex = 42 })
+    assert.equals("old-ruby", tracked and tracked.uid)
+  end)
+
   it("updates the selected dungeon and initializes its preset selection", function()
     local db = { currentPreset = {}, presets = {} }
     _G.MythicDungeonToolsAPI = { GetDB = function() return db end }

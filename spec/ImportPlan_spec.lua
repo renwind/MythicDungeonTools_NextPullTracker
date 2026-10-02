@@ -93,6 +93,42 @@ describe("ImportPlan apply", function()
     end)
   end)
 
+  it("重新导入把 uses 从 2 降回 1 时清除旧 uses（不残留 2）", function()
+    scenario(function(env)
+      local pull = { [3] = { 1, 2 } }
+      local preset = presetWith({ pull })
+      _G.MDT.GetCurrentPreset = function() return preset end
+      _G.MDT.dungeonEnemies = { [1] = enemiesFor(pull) }
+      local key = MDT_NPT.ImportPlan.computeRouteKey(preset.value.pulls)
+
+      assert.is_true(MDT_NPT.ImportPlan:apply(1, "114050:spell:use:2", key))
+      assert.equals(2, MDT_NPT.CooldownPlan:Get("uid1", 1).entries[1].uses)
+
+      assert.is_true(MDT_NPT.ImportPlan:apply(1, "114050:spell:use", key))
+      local plan = MDT_NPT.CooldownPlan:Get("uid1", 1)
+      assert.equals(1, #plan.entries)
+      assert.is_nil(plan.entries[1].uses)
+    end)
+  end)
+
+  it("重新导入移除新 spec 里没有的旧条目（整波以新 spec 为准）", function()
+    scenario(function(env)
+      local pull = { [3] = { 1, 2 } }
+      local preset = presetWith({ pull })
+      _G.MDT.GetCurrentPreset = function() return preset end
+      _G.MDT.dungeonEnemies = { [1] = enemiesFor(pull) }
+      local key = MDT_NPT.ImportPlan.computeRouteKey(preset.value.pulls)
+
+      assert.is_true(MDT_NPT.ImportPlan:apply(1, "114050:spell:use:2;241308:item:use", key))
+      assert.equals(2, #MDT_NPT.CooldownPlan:Get("uid1", 1).entries)
+
+      assert.is_true(MDT_NPT.ImportPlan:apply(1, "114050:spell:use", key))
+      local plan = MDT_NPT.CooldownPlan:Get("uid1", 1)
+      assert.equals(1, #plan.entries)
+      assert.equals(114050, plan.entries[1].id)
+    end)
+  end)
+
   it("routeKey 对不上拒绝写入", function()
     scenario(function(env)
       local pull = { [3] = { 1, 2 } }

@@ -71,6 +71,10 @@ local FALLBACK = {
   cdMismatch     = { 1, 0.8, 0, 1 },                    -- fingerprint mismatch
   cdEmpty        = { 0.3, 0.3, 0.3, 0.5 },              -- not planned
 
+  -- Spell ratio orb（语义色 — 被比较的两个萨满技能，不随 accent 派生）
+  spellRatioElemental  = { 179/255, 76/255,  255/255, 1 },  -- #B34CFF 元素冲击
+  spellRatioEarthquake = { 201/255, 144/255, 46/255,  1 },  -- #C9902E 地震术
+
   -- Bloodlust / Heroism
   lustNotReady   = { 1, 0.3, 0.3, 1 },                  -- on CD text red
   lustReady      = { 0.6, 1, 0.6, 1 },                  -- ready icon green tint
@@ -109,9 +113,24 @@ Theme.pullOutlineColors = {
 ---------------------------------------------------------------------------
 -- Shared texture paths
 ---------------------------------------------------------------------------
+local ORB_MEDIA = "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Media\\orb\\"
+
 Theme.textures = {
   circleWhite = "Interface\\AddOns\\MythicDungeonTools\\Textures\\Circle_White",
   statusBar   = "Interface\\TargetingFrame\\UI-StatusBar",
+  -- 暗黑风格液体球。filling 一张染两次色当两种液体（暗黑就是这么做的，
+  -- 从不靠换贴图区分颜色）；grid 是装饰环，OrbLiquid 只对它做中性压暗、不加色相。
+  orb = {
+    back      = ORB_MEDIA .. "orb_back.tga",
+    filling   = ORB_MEDIA .. "orb_filling15.tga",
+    grid      = ORB_MEDIA .. "orb_grid1.tga",
+    bubbles1  = ORB_MEDIA .. "orb_rotation_bubbles1.tga",
+    bubbles2  = ORB_MEDIA .. "orb_rotation_bubbles2.tga",
+    spark     = ORB_MEDIA .. "orb_spark.tga",
+    sparkMask = ORB_MEDIA .. "orb_spark_mask.tga",
+    gloss     = ORB_MEDIA .. "orb_gloss.tga",
+    shadow    = ORB_MEDIA .. "orb_shadow.tga",
+  },
 }
 
 ---------------------------------------------------------------------------

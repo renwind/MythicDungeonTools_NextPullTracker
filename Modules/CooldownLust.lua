@@ -112,24 +112,41 @@ local function formatReady(r)
   return string.format("%d", math.ceil(r))
 end
 
--- 爆发药水 4 个 itemID 共享的使用效果法术（与 CooldownData.lua:30 SEED_TABLE 的 useEffectSpellID 一致）。
-local POTION_USE_EFFECT_SPELL = 1236616
+-- 用完最后一瓶后，共享冷却仍可能只挂在该品质或临时版的物品 ID 上。
+local POTION_ITEM_IDS = { 241308, 241309, 245898, 245897 }
 
--- 爆发药水再次可用的秒数（0 = 就绪）；CD 探测与上面嗜血 CD 分支同一套 pcall 纪律。
+local function itemReadyIn(itemID, now)
+  local remaining = 0
+  local function probe(getCooldown)
+    if not getCooldown then return end
+    pcall(function()
+      local start, duration = getCooldown(itemID)
+      if start and duration and duration > 2 then
+        remaining = math.max(0, start + duration - now)
+      end
+    end)
+  end
+  probe(C_Container and C_Container.GetItemCooldown)
+  if remaining == 0 then probe(C_Item and C_Item.GetItemCooldown) end
+  return remaining
+end
+
 local function potionReadyIn()
-  local r = 0
-  if C_Spell and C_Spell.GetSpellCooldown then
-    local cd = C_Spell.GetSpellCooldown(POTION_USE_EFFECT_SPELL)
-    if cd and cd.isEnabled and cd.isActive then
-      local now = GetTime()
-      pcall(function()
-        if cd.duration > 2 then
-          r = math.max(r, cd.startTime + cd.duration - now)
+  local dbChar = MDT_NPT.GetDBChar and MDT_NPT:GetDBChar()
+  local itemID = (dbChar and dbChar.cooldownPotionID) or POTION_ITEM_IDS[1]
+  local now = GetTime()
+  local remaining = itemReadyIn(itemID, now)
+  for _, id in ipairs(POTION_ITEM_IDS) do
+    if id == itemID then
+      for _, alternateID in ipairs(POTION_ITEM_IDS) do
+        if alternateID ~= itemID then
+          remaining = math.max(remaining, itemReadyIn(alternateID, now))
         end
-      end)
+      end
+      break
     end
   end
-  return r
+  return remaining
 end
 
 -- 白底圆环贴图，运行时 SetVertexColor 染主题色（与 AlertBanner v3 同一套资产/路数）。

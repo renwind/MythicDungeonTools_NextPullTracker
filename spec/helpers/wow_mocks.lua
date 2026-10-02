@@ -89,18 +89,23 @@ end
 -- 显式可选的冷却测试环境；即使断言失败也立即恢复全局，不依赖 after_each。
 function M.withCooldownRuntime(fn)
   local names = {
-    "C_SpecializationInfo", "C_SpellBook", "Enum", "C_Spell", "C_Item", "C_Timer",
-    "GetTime", "GetPhysicalScreenSize", "CreateFrame", "EllesmereUI", "unpack",
-    "IsControlKeyDown", "MDTNPTCooldownPlanMixin",
+    "C_SpecializationInfo", "C_SpellBook", "Enum", "C_Spell", "C_Item", "C_Container", "C_Timer",
+    "GetTime", "GetPhysicalScreenSize", "GetCursorPosition", "CreateFrame", "EllesmereUI", "unpack",
+    "IsAltKeyDown", "IsControlKeyDown", "MDTNPTCooldownPlanMixin",
     "PlaySoundFile", "UIParent", "GameFontNormalLarge", "GetLocale", "C_UnitAuras",
   }
   local saved = {}
   for _, name in ipairs(names) do saved[name] = _G[name] end
   local env = {
-    specID = 262, time = 100, alt = false, tickers = {},
-    dbChar = { cooldownPotionID = 241308, cooldownPlans = {} },
-    db = { beacon = { showCooldownPlan = true, alertVoice = true, alertText = true, lustAlert = true } },
+    specID = 262, time = 100, alt = false, tickers = {}, cursorX = 0, cursorY = 0,
+    dbChar = { cooldownPotionID = 241308, cooldownPlans = {}, rotationRatios = {} },
+    db = { beacon = {
+      showCooldownPlan = true, alertVoice = true, alertText = true, lustAlert = true,
+      spellRatioOrb = true,
+    } },
     cooldown = { isEnabled = true, isActive = false, startTime = 0, duration = 0 },
+    itemCooldowns = {},
+    containerCooldowns = {},
     -- 玩家光环（CooldownLust 的精疲力尽探测）：spellID -> aura 表，形状与
     -- C_UnitAuras.GetPlayerAuraBySpellID 的真实返回一致（只用 .expirationTime）。
     auras = {},
@@ -132,10 +137,14 @@ function M.withCooldownRuntime(fn)
     function w:SetHeight(height) self.height = height end
     function w:GetWidth() return self.width end
     function w:GetHeight() return self.height end
+    function w:GetName() return self.name end
     function w:GetParent() return self.parent end
-    function w:GetEffectiveScale() return 1 end
+    function w:SetScale(scale) self.scale = scale end
+    function w:GetScale() return self.scale or 1 end
+    function w:GetEffectiveScale() return self.effectiveScale or 1 end
     function w:GetFrameLevel() return self.level end
     function w:SetFrameLevel(level) self.level = level end
+    function w:SetClampedToScreen(clamped) self.clamped = clamped end
     function w:Show() self.shown = true end
     function w:Hide() self.shown = false end
     function w:IsShown() return self.shown end
@@ -172,8 +181,36 @@ function M.withCooldownRuntime(fn)
       end
     end
     function w:SetAtlas(atlas) self.atlas = atlas end
+    -- StatusBar / 裁剪 / 混合：OrbLiquid 的液位技法全靠这些。只录制不模拟——
+    -- SetClipsChildren 的真实裁剪行为在 mock 里根本无法复现，视觉结果只能真机验收。
+    function w:SetClipsChildren(clips) self.clipsChildren = clips end
+    function w:SetOrientation(orientation) self.orientation = orientation end
+    function w:SetReverseFill(reverse) self.reverseFill = reverse end
+    function w:SetMinMaxValues(min, max) self.minMax = { min, max } end
+    function w:SetStatusBarTexture(texture) self.statusBarTexture = texture end
+    function w:SetStatusBarColor(...) self.statusBarColor = { ... } end
+    function w:GetStatusBarColor() return table.unpack(self.statusBarColor or { 1, 1, 1, 1 }) end
+    -- 真实签名 SetValue(value[, interpolation])；第二参数是 Enum.StatusBarInterpolation。
+    function w:SetValue(value, interpolation) self.value = value; self.interpolation = interpolation end
+    function w:GetValue() return self.value end
+    function w:SetBlendMode(mode) self.blendMode = mode end
+    function w:SetDrawLayer(layer, sublayer) self.drawLayer = layer; self.drawSublayer = sublayer end
+    -- 返回一个稳定的 region，让「裁剪框的移动边锚到 driver 贴图」这类断言能按 identity 比较。
+    -- 与客户端的有意分歧：那边此 region 就是 SetStatusBarTexture 设的那张贴图（shipped 插件
+    -- 会 GetStatusBarTexture():SetTexture(...)），这里两者不联动——路径只记录，region 只供 identity 与绘制层断言。
+    function w:GetStatusBarTexture()
+      if not self._statusBarTextureRegion then
+        self._statusBarTextureRegion = widget("Texture", self)
+        self.regions[#self.regions + 1] = self._statusBarTextureRegion
+      end
+      return self._statusBarTextureRegion
+    end
     function w:SetAlpha(alpha) self.alpha = alpha end
+    function w:SetNormalTexture(texture) self.normalTexture = texture end
+    function w:SetHighlightTexture(texture) self.highlightTexture = texture end
+    function w:SetPushedTexture(texture) self.pushedTexture = texture end
     function w:SetScript(name, callback) self.scripts[name] = callback end
+    function w:GetScript(name) return self.scripts[name] end
     function w:EnableMouse(enabled) self.mouseEnabled = enabled end
     function w:IsMouseEnabled() return self.mouseEnabled end
     function w:RegisterEvent(event) self.events = self.events or {}; self.events[#self.events + 1] = event end
@@ -195,8 +232,11 @@ function M.withCooldownRuntime(fn)
     function w:SetCooldown(start, duration) self.cooldown = { start, duration } end
     function w:SetHideCountdownNumbers(hide) self.hideCountdownNumbers = hide end
     function w:Clear() self.cooldown = nil end
-    function w:CreateTexture(_, drawLayer)
+    -- 真实签名 CreateTexture([name],[layer],[inherits],[sublayer])；渲染栈的叠放次序
+    -- 靠 sublayer 决定（gloss/shadow 同为 3、grid 为 4），所以必须录下来。
+    function w:CreateTexture(_, drawLayer, _, sublayer)
       local region = widget("Texture", self, drawLayer)
+      region.sublayer = sublayer
       self.regions[#self.regions + 1] = region
       return region
     end
@@ -224,6 +264,7 @@ function M.withCooldownRuntime(fn)
         function a:SetFromAlpha(v) self.from = v end
         function a:SetToAlpha(v) self.to = v end
         function a:SetDuration(d) self.duration = d end
+        function a:SetDegrees(degrees) self.degrees = degrees end
         -- Scale 动画（AlertBanner v3 的弹出）：与 Alpha 记录器同风格。
         function a:SetOrigin(point, x, y) self.origin = { point, x, y } end
         function a:SetScaleFrom(x, y) self.fromScale = { x, y } end
@@ -234,6 +275,7 @@ function M.withCooldownRuntime(fn)
       function group:Play() self.playing = true; self.plays = self.plays + 1 end
       function group:Stop() self.playing = false; self.stops = self.stops + 1 end
       function group:IsPlaying() return self.playing end
+      function group:SetLooping(mode) self.looping = mode end
       function group:SetScript(name, fn) self.scripts[name] = fn end
       -- 仅测试用：真实 AnimationGroup 没有 Finish。下划线前缀提醒它不是客户端 API，
       -- 产品代码绝不可调用（「臆造 mock 方法」的教训，见下文 C_Timer.After 的注释）。
@@ -263,7 +305,16 @@ function M.withCooldownRuntime(fn)
       GetSpecializationInfo = function() return env.specID end,
     }
     _G.C_SpellBook = { IsSpellInSpellBook = function() return true end }
-    _G.Enum = { SpellBookSpellBank = { Player = 0 } }
+    _G.Enum = {
+      SpellBookSpellBank = { Player = 0 },
+      -- 原生状态条插值模式；oUF 直接把它传给 StatusBar:SetValue 的第二参数。
+      -- 只有这两个成员（warcraft.wiki.gg 的 Enum.StatusBarInterpolation 表，
+      -- 与本机 AddOns 的实际用法一致）：臆造第三个成员会让产品代码传 nil 而 spec 全绿。
+      StatusBarInterpolation = {
+        Immediate = 0,
+        ExponentialEaseOut = 1,
+      },
+    }
     _G.C_Spell = {
       GetSpellTexture = function(id) return "spell:" .. id end,
       GetSpellCooldown = function() return env.cooldown end,
@@ -273,7 +324,21 @@ function M.withCooldownRuntime(fn)
     _G.C_UnitAuras = {
       GetPlayerAuraBySpellID = function(id) return env.auras[id] end,
     }
-    _G.C_Item = { GetItemIconByID = function(id) return "item:" .. id end }
+    _G.C_Item = {
+      GetItemIconByID = function(id) return "item:" .. id end,
+      GetItemCooldown = function(id)
+        local cd = env.itemCooldowns[id]
+        if not cd then return 0, 0, 1 end
+        return cd.startTime, cd.duration, 1
+      end,
+    }
+    _G.C_Container = {
+      GetItemCooldown = function(id)
+        local cd = env.containerCooldowns[id]
+        if not cd then return 0, 0, 1 end
+        return cd.startTime, cd.duration, 1
+      end,
+    }
     _G.C_Timer = {
       NewTicker = function(_, callback)
         local ticker = { callback = callback, Cancel = function(self) self.cancelled = true end }
@@ -296,9 +361,11 @@ function M.withCooldownRuntime(fn)
     _G.GetTime = function() return env.time end
     _G.IsAltKeyDown = function() return env.alt end
     _G.GetPhysicalScreenSize = function() return 1920, 1080 end
+    _G.GetCursorPosition = function() return env.cursorX, env.cursorY end
     _G.IsControlKeyDown = function() return false end
-    _G.CreateFrame = function(kind, _, parent, template)
+    _G.CreateFrame = function(kind, name, parent, template)
       local w = widget(kind, parent)
+      w.name = name
       -- 零售客户端只有 BackdropTemplate 框才有 SetBackdrop*；mock 同样按模板挂。
       if type(template) == "string" and template:find("BackdropTemplate", 1, true) then
         function w:SetBackdrop(t)

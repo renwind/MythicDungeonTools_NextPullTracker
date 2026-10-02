@@ -15,18 +15,18 @@ function loadNpcIds(luaText) {
   return out;
 }
 
-// enemyIdx -> {id, count, clones}；count=0 的是 boss/召唤物（不占兵力）。
+// enemyIdx -> {id, count, clones, health}；count=0 的是 boss/召唤物（不占兵力）；health 缺失默认 0。
 function loadEnemyMeta(luaText) {
   const start = luaText.indexOf("MDT.dungeonEnemies[");
   if (start < 0) throw new Error("align: dungeonEnemies block not found");
   const block = luaText.slice(start);
-  const re = /\["id"\]\s*=\s*(\d+),\s*\["count"\]\s*=\s*(\d+)/g;
+  const re = /\["id"\]\s*=\s*(\d+),\s*\["count"\]\s*=\s*(\d+)(?:,\s*\["health"\]\s*=\s*(\d+))?/g;
   const meta = {};
   let m;
   let idx = 0;
   while ((m = re.exec(block)) !== null) {
     idx += 1;
-    meta[idx] = { id: Number(m[1]), count: Number(m[2]), clones: 0 };
+    meta[idx] = { id: Number(m[1]), count: Number(m[2]), clones: 0, health: m[3] ? Number(m[3]) : 0 };
   }
   const cloneRe = /\["clones"\] = \{([\s\S]*?)\n    \}/g;
   idx = 0;
