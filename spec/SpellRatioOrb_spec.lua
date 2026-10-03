@@ -9,8 +9,6 @@ local EASE = nil   -- 在 scenario 内捕获，见下
 local SIZE_GRABBER_UP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up"
 local SIZE_GRABBER_HIGHLIGHT = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight"
 local SIZE_GRABBER_DOWN = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down"
-local ELEMENTAL_BLAST_ID = 117014
-local EARTHQUAKE_ID = 61882
 
 local function scenario(fn)
   mocks.withCooldownRuntime(function(env)
@@ -125,7 +123,7 @@ describe("SpellRatioOrb frame", function()
     end)
   end)
 
-  it("creates the named 96px orb inside a 126-wide frame with 20px icons and no ticker", function()
+  it("creates the named 96px orb inside a 126-wide frame with no icons and no ticker", function()
     scenario(function(env, orb)
       local frame = orb:GetFrame()
       assert.equals("MDTNPTSpellRatioOrb", frame:GetName())
@@ -137,10 +135,9 @@ describe("SpellRatioOrb frame", function()
       -- 在框内斜移 15px，而其它断言全都察觉不到——这是唯一钉住这个偏移的地方。
       assert.same({ "TOPLEFT", frame, "TOPLEFT", 15, -15 }, point(frame.orb))
       assert.equals(frame, frame.orb.parent)
-      assert.equals(20, frame.primaryIcon:GetWidth())
-      assert.equals(20, frame.primaryIcon:GetHeight())
-      assert.equals(20, frame.secondaryIcon:GetWidth())
-      assert.equals(20, frame.secondaryIcon:GetHeight())
+      -- 球旁的技能图标已按用户要求移除：比例只由液体颜色与下方文字表达
+      assert.is_nil(frame.primaryIcon)
+      assert.is_nil(frame.secondaryIcon)
       assert.is_true(frame.clamped)
       assert.equals(0, #env.tickers)
     end)
@@ -216,9 +213,14 @@ describe("SpellRatioOrb frame", function()
       assert.equals(o, o.ebClip.parent)
       assert.is_true(anchorsTo(o.spark, o.eqClip, "TOP"))
       -- SetColors 是 top 先 bottom 后；两侧搞反不会报错，只会得到颜色互换但仍然好看的球，
-      -- 所以必须端到端钉住实际落到液体上的顶点色。
-      assert.same({ 179 / 255, 76 / 255, 255 / 255, 1 }, o.ebLiquid.vertexColor)
-      assert.same({ 201 / 255, 144 / 255, 46 / 255, 1 }, o.eqLiquid.vertexColor)
+      -- 所以必须端到端钉住实际落到液体上的顶点色（含 OrbLiquid 的归一 + 0.25 提亮）。
+      local function tint(c)
+        local m = math.max(c[1], c[2], c[3])
+        local r, g, b = c[1] / m, c[2] / m, c[3] / m
+        return { r + (1 - r) * 0.25, g + (1 - g) * 0.25, b + (1 - b) * 0.25, c[4] }
+      end
+      assert.same(tint({ 179 / 255, 76 / 255, 255 / 255, 1 }), o.ebLiquid.vertexColor)
+      assert.same(tint({ 230 / 255, 190 / 255, 114 / 255, 1 }), o.eqLiquid.vertexColor)
     end)
   end)
 
@@ -293,7 +295,7 @@ end)
 describe("SpellRatioOrb rendering", function()
   before_each(function() mocks.reset() end)
 
-  it("renders exact 8:2 splits, text and Elemental Blast icon", function()
+  it("renders exact 8:2 splits and text", function()
     scenario(function(env, orb)
       seed(8, 2)
       orb:Update()
@@ -308,9 +310,6 @@ describe("SpellRatioOrb rendering", function()
       assert.is_true(frame.orb.spark:IsShown())
       assert.equals("8:2", frame.ratioText:GetText())
       assert.is_true(frame.ratioText:IsShown())
-      assert.equals("spell:" .. ELEMENTAL_BLAST_ID, frame.primaryIcon.texture)
-      assert.is_true(frame.primaryIcon:IsShown())
-      assert.is_false(frame.secondaryIcon:IsShown())
       assert.equals(env.activePull, env.verifiedPull)
       assert.equals(MDT.dungeonEnemies[1], env.verifiedEnemies)
       -- Resolved via the tracked state (uid-first), not MDT's ambient selection.
@@ -362,7 +361,7 @@ describe("SpellRatioOrb rendering", function()
     end
   end)
 
-  it("renders Earthquake as the dominant icon and the larger fill", function()
+  it("renders Earthquake as the larger fill", function()
     scenario(function(_, orb)
       seed(2, 8)
       orb:Update()
@@ -370,29 +369,21 @@ describe("SpellRatioOrb rendering", function()
       assert.equals(2, frame.orb.ebDriver.value)
       assert.equals(8, frame.orb.eqDriver.value)
       assert.equals("2:8", frame.ratioText:GetText())
-      assert.equals("spell:" .. EARTHQUAKE_ID, frame.primaryIcon.texture)
-      assert.is_true(frame.primaryIcon:IsShown())
-      assert.is_false(frame.secondaryIcon:IsShown())
     end)
   end)
 
-  it("shows both icons side by side only when raw nonzero counts are equal", function()
+  it("keeps 5:5 text for equal and near-equal raw counts", function()
     scenario(function(_, orb)
       seed(3, 3)
       orb:Update()
       local frame = orb:GetFrame()
       assert.equals("5:5", frame.ratioText:GetText())
-      assert.equals("spell:" .. ELEMENTAL_BLAST_ID, frame.primaryIcon.texture)
-      assert.equals("spell:" .. EARTHQUAKE_ID, frame.secondaryIcon.texture)
-      assert.is_true(frame.primaryIcon:IsShown())
-      assert.is_true(frame.secondaryIcon:IsShown())
-      assert.same({ "RIGHT", frame.primaryIcon, "LEFT", -2, 0 }, point(frame.secondaryIcon))
+      assert.equals(5, frame.orb.ebDriver.value)
+      assert.equals(5, frame.orb.eqDriver.value)
 
       MDT_NPT.SpellRatioData:Set("uid1", 1, 51, 49, "fp")
       orb:Update()
       assert.equals("5:5", frame.ratioText:GetText())
-      assert.equals("spell:" .. ELEMENTAL_BLAST_ID, frame.primaryIcon.texture)
-      assert.is_false(frame.secondaryIcon:IsShown())
     end)
   end)
 
@@ -402,7 +393,6 @@ describe("SpellRatioOrb rendering", function()
       orb:Update()
       local frame = orb:GetFrame()
       assert.is_true(frame.ratioText:IsShown())
-      assert.is_true(frame.primaryIcon:IsShown())
 
       MDT_NPT.SpellRatioData:Set("uid1", 1, 0, 0, "fp")
       -- 先藏起来：0:0 分支必须自己把框 Show 回来（「暗色空球仍然可见」），
@@ -424,8 +414,6 @@ describe("SpellRatioOrb rendering", function()
       assert.is_true(o.orbshadow:IsShown())
       assert.is_true(o.grid:IsShown())
       assert.is_false(frame.ratioText:IsShown())
-      assert.is_false(frame.primaryIcon:IsShown())
-      assert.is_false(frame.secondaryIcon:IsShown())
     end)
   end)
 end)

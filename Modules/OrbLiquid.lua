@@ -20,8 +20,12 @@ local CROP_MIN, CROP_MAX = 0.05, 0.95   -- 取源图内侧 90% 铺满同一显�
 local FORWARD, REVERSE = false, true
 
 local BACK_ALPHA   = 0.4    -- 暗黑默认 0.1，但 0:0 空球时只剩这一层，太淡会像球消失了
-local GLOSS_ALPHA  = 0.8    -- 暗黑原值
-local SHADOW_ALPHA = 0.25   -- 暗黑原值
+local GLOSS_ALPHA  = 0.35   -- 暗黑原值 0.8；真机反馈球内太暗两度减淡（仍保留顶部高光）。
+                            -- 提亮走 gloss 而不是气泡：气泡是 ADD 泡沫层，调高只增噪不增亮
+local SHADOW_ALPHA = 0.10   -- 暗黑原值 0.25；真机反馈球内太暗，内缘黑边两度减淡
+local LIQUID_LIFT  = 0.25   -- 顶点色与液体贴图逐通道相乘会压暗球内：先把主题色按最大通道
+                            -- 归一（保色相、主通道拉满亮），再按此比例向白色抬升，
+                            -- 球内才读得到「明亮轻快」而不是暗色玻璃
 local GRID_ALPHA   = 1.0    -- 暗黑默认 0（关掉的），我们要它当边框。必须不透明：
                             -- alpha<1 会让饱和的游戏背景从环里透出来，给灰环加一层蓝调
 local GRID_TINT    = 0.38   -- 中性压暗系数，见 grid 创建处注释；0.38 为 2026-10-03 真机定值
@@ -41,7 +45,7 @@ local SPARK_H_N   = 8
 -- 而不是在一个看得见的方块里打转。两层溢出量不同则视差不同。
 local BUBBLE1_N    = 168
 local BUBBLE2_N    = 162
-local BUBBLE_ALPHA = 0.3   -- 静止 alpha，同时也是脉冲上界
+local BUBBLE_ALPHA = 0.3   -- 静止 alpha，同时也是脉冲上界（暗黑原值）；真机试过 0.4 只增泡沫噪点不增亮，回退
 local BUBBLE_DIM   = 0.3   -- 脉冲下界比例：下界 = BUBBLE_ALPHA × BUBBLE_DIM（暗黑 0.3*bubblesalpha 同款）
 
 local WHITE_8X8 = "Interface\\Buttons\\WHITE8X8"
@@ -284,7 +288,14 @@ end
 --- 本就设计成靠顶点色上色，只染液体不染气泡会得到一团白色泡沫浮在有色液体上。
 --- 有意不染 grid（装饰环）：用户明确要求保留原图色、不跟 EUI 主题。
 local function applyColor(liquid, bubbles, color)
+  local maxChannel = math.max(color[1], color[2], color[3])
   local r, g, b = color[1], color[2], color[3]
+  if maxChannel > 0 then
+    r, g, b = r / maxChannel, g / maxChannel, b / maxChannel
+  end
+  r = r + (1 - r) * LIQUID_LIFT
+  g = g + (1 - g) * LIQUID_LIFT
+  b = b + (1 - b) * LIQUID_LIFT
   local a = color[4] or 1
   liquid:SetVertexColor(r, g, b, a)
   for _, bubble in ipairs(bubbles) do

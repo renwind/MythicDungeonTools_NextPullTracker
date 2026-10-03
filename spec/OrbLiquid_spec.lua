@@ -184,14 +184,14 @@ describe("OrbLiquid render stack", function()
       assert.equals(ORB_MEDIA .. "orb_gloss.tga", orb.gloss.texture)
       assert.equals(97.2, orb.gloss:GetWidth())
       assert.equals(97.2, orb.gloss:GetHeight())
-      assert.equals(0.8, orb.gloss.alpha)
+      assert.equals(0.35, orb.gloss.alpha)
       assert.equals("BACKGROUND", orb.gloss.layer)
       assert.equals(3, orb.gloss.sublayer)
       assert.same({ 0.05, 0.95, 0.05, 0.95 }, orb.gloss.texCoord)
 
       assert.equals(ORB_MEDIA .. "orb_shadow.tga", orb.orbshadow.texture)
       assert.same({ 0, 0, 0 }, orb.orbshadow.vertexColor)
-      assert.equals(0.25, orb.orbshadow.alpha)
+      assert.equals(0.10, orb.orbshadow.alpha)
       assert.equals("BACKGROUND", orb.orbshadow.layer)
       assert.equals(3, orb.orbshadow.sublayer)
       -- 两半一起钉：gloss 裁、shadow 不裁是照抄暗黑（units\player.lua:585 对 :591-600）的
@@ -456,12 +456,19 @@ describe("OrbLiquid SetSplit / SetColors", function()
     scenario(function(_, orb)
       local purple = { 179 / 255, 76 / 255, 255 / 255, 1 }
       local gold = { 201 / 255, 144 / 255, 46 / 255, 1 }
+      -- 产品代码先按最大通道归一（保色相、主通道满亮）再向白色抬升 0.25，
+      -- 否则顶点色与液体贴图相乘会把球内压成暗色玻璃
+      local function tint(c)
+        local m = math.max(c[1], c[2], c[3])
+        local r, g, b = c[1] / m, c[2] / m, c[3] / m
+        return { r + (1 - r) * 0.25, g + (1 - g) * 0.25, b + (1 - b) * 0.25, c[4] }
+      end
       orb:SetColors(purple, gold)
 
-      assert.same(purple, orb.ebLiquid.vertexColor)
-      assert.same(gold, orb.eqLiquid.vertexColor)
-      for _, b in ipairs(orb.ebBubbles) do assert.same(purple, b.vertexColor) end
-      for _, b in ipairs(orb.eqBubbles) do assert.same(gold, b.vertexColor) end
+      assert.same(tint(purple), orb.ebLiquid.vertexColor)
+      assert.same(tint(gold), orb.eqLiquid.vertexColor)
+      for _, b in ipairs(orb.ebBubbles) do assert.same(tint(purple), b.vertexColor) end
+      for _, b in ipairs(orb.eqBubbles) do assert.same(tint(gold), b.vertexColor) end
       -- 装饰环不在 SetColors 的染色范围内：它只带自己的中性压暗，不跟技能色走
       assert.same({ 0.38, 0.38, 0.38 }, orb.grid.vertexColor)
     end)
@@ -470,8 +477,9 @@ describe("OrbLiquid SetSplit / SetColors", function()
   it("defaults the alpha channel when a color has only three components", function()
     scenario(function(_, orb)
       orb:SetColors({ 0.5, 0.25, 0.75 }, { 0.1, 0.2, 0.3 })
-      assert.same({ 0.5, 0.25, 0.75, 1 }, orb.ebLiquid.vertexColor)
-      assert.same({ 0.1, 0.2, 0.3, 1 }, orb.eqLiquid.vertexColor)
+      -- {0.5,0.25,0.75} 归一后 = {2/3,1/3,1}；{0.1,0.2,0.3} 归一后 = {1/3,2/3,1}
+      assert.same({ 2 / 3 + (1 / 3) * 0.25, 1 / 3 + (2 / 3) * 0.25, 1, 1 }, orb.ebLiquid.vertexColor)
+      assert.same({ 1 / 3 + (2 / 3) * 0.25, 2 / 3 + (1 / 3) * 0.25, 1, 1 }, orb.eqLiquid.vertexColor)
     end)
   end)
 

@@ -11,13 +11,10 @@ local ORB_SIZE = 96
 -- 否则改了 OrbLiquid 的 GRID_N，框体/缩放把手/屏幕夹取会静默与美术脱节，且无测试能发现。
 local GRID_SIZE = OrbLiquid.GridSize(ORB_SIZE)          -- 126
 local GRID_OVERHANG = OrbLiquid.GridOverhang(ORB_SIZE)  -- 15
-local ICON_SIZE = 20
 local FRAME_BASE_W = GRID_SIZE                         -- 126
 local FRAME_BASE_H = GRID_SIZE + 18                    -- 144
 local SCALE_MIN = 0.5
 local SCALE_MAX = 2.0
-local ELEMENTAL_BLAST_ID = 117014
-local EARTHQUAKE_ID = 61882
 local VALID_ANCHORS = {
   TOPLEFT = true,
   TOP = true,
@@ -158,16 +155,6 @@ local function ensureFrame()
   frame.ratioText:SetTextColor(textColor[1], textColor[2], textColor[3], textColor[4])
   frame.ratioText:Hide()
 
-  frame.primaryIcon = frame:CreateTexture(nil, "OVERLAY")
-  frame.primaryIcon:SetSize(ICON_SIZE, ICON_SIZE)
-  frame.primaryIcon:SetPoint("CENTER", frame.orb, "TOPRIGHT", 3, -3)
-  frame.primaryIcon:Hide()
-
-  frame.secondaryIcon = frame:CreateTexture(nil, "OVERLAY")
-  frame.secondaryIcon:SetSize(ICON_SIZE, ICON_SIZE)
-  frame.secondaryIcon:SetPoint("RIGHT", frame.primaryIcon, "LEFT", -2, 0)
-  frame.secondaryIcon:Hide()
-
   local finishScaling
   frame.resizeGrip, finishScaling = createResizeGrip(frame)
 
@@ -274,8 +261,6 @@ function SpellRatioOrb:Update()
   if total == 0 then
     f.orb:SetSplit(0, 0)
     f.ratioText:Hide()
-    f.primaryIcon:Hide()
-    f.secondaryIcon:Hide()
     f:Show()
     return
   end
@@ -286,19 +271,6 @@ function SpellRatioOrb:Update()
   local tenths = SpellRatioData:RatioTenths(row)
   f.ratioText:SetText(tenths.elementalBlast .. ":" .. tenths.earthquake)
   f.ratioText:Show()
-
-  if row.elementalBlast == row.earthquake then
-    f.primaryIcon:SetTexture(C_Spell.GetSpellTexture(ELEMENTAL_BLAST_ID))
-    f.secondaryIcon:SetTexture(C_Spell.GetSpellTexture(EARTHQUAKE_ID))
-    f.primaryIcon:Show()
-    f.secondaryIcon:Show()
-  else
-    local spellID = row.elementalBlast > row.earthquake
-      and ELEMENTAL_BLAST_ID or EARTHQUAKE_ID
-    f.primaryIcon:SetTexture(C_Spell.GetSpellTexture(spellID))
-    f.primaryIcon:Show()
-    f.secondaryIcon:Hide()
-  end
 
   f:Show()
 end

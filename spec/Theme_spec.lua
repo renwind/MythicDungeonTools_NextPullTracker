@@ -57,7 +57,7 @@ describe("Theme.lua", function()
 
     it("keeps the two spell ratio colors as opaque semantic tokens", function()
       assert.same({ 179 / 255, 76 / 255, 255 / 255, 1 }, Theme.colors.spellRatioElemental)
-      assert.same({ 201 / 255, 144 / 255, 46 / 255, 1 }, Theme.colors.spellRatioEarthquake)
+      assert.same({ 230 / 255, 190 / 255, 114 / 255, 1 }, Theme.colors.spellRatioEarthquake)
     end)
   end)
 

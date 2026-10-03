@@ -72,8 +72,8 @@ local FALLBACK = {
   cdEmpty        = { 0.3, 0.3, 0.3, 0.5 },              -- not planned
 
   -- Spell ratio orb（语义色 — 被比较的两个萨满技能，不随 accent 派生）
-  spellRatioElemental  = { 179/255, 76/255,  255/255, 1 },  -- #B34CFF 元素冲击
-  spellRatioEarthquake = { 201/255, 144/255, 46/255,  1 },  -- #C9902E 地震术
+  spellRatioElemental  = { 179/255, 76/255,  255/255, 1 },  -- #B34CFF 元素冲击（OrbLiquid 归一+抬升后约 #C679FF）
+  spellRatioEarthquake = { 230/255, 190/255, 114/255, 1 },  -- #E6BE72 地震术（浅岩金；归一+抬升后约 #FFDE9F）
 
   -- Bloodlust / Heroism
   lustNotReady   = { 1, 0.3, 0.3, 1 },                  -- on CD text red
