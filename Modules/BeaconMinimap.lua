@@ -5,6 +5,7 @@ local math_max, math_min, math_huge = math.max, math.min, math.huge
 local math_cos, math_sin, math_pi = math.cos, math.sin, math.pi
 local table_sort = table.sort
 local Theme = MDT_NPT.Theme
+local MobStyle = MDT_NPT.MobStyle
 
 local SIZE = 208                -- viewport width/height in pixels
 local GRID_COLS = 15
@@ -182,6 +183,20 @@ local function getDot(frame, dotIndex)
   return dot, dotIndex
 end
 
+-- Kick-cyan rim for dual-attribute mobs (boss/miniboss + interruptible): a 2px
+-- larger disc one sublevel below the dots so the tier-coloured dot sits inside it.
+local function getRim(frame, rimIndex)
+  rimIndex = rimIndex + 1
+  frame.dotRims = frame.dotRims or {}
+  local rim = frame.dotRims[rimIndex]
+  if not rim then
+    rim = frame.minimapContainer:CreateTexture(nil, "OVERLAY", nil, -1)
+    rim:SetTexture("Interface\\AddOns\\MythicDungeonTools\\Textures\\Circle_White")
+    frame.dotRims[rimIndex] = rim
+  end
+  return rim, rimIndex
+end
+
 local HALO_RADIUS = 18      -- world units: padding disc around each enemy so the hull wraps with slack
 local HALO_SEGMENTS = 10    -- points sampled around each halo; more = rounder outline
 local OUTLINE_THICKNESS = 2 -- pixels
@@ -332,12 +347,16 @@ local function updateMinimapDots(frame, state, pulls, enemies, sublevel)
   for _, dot in ipairs(frame.dots) do
     dot:Hide()
   end
+  for _, rim in ipairs(frame.dotRims or {}) do
+    rim:Hide()
+  end
 
   -- Draw dots for relevant pulls (next, +/-1 for context)
   local nextPull = state.currentNextPull
   if not nextPull then return end
 
   local dotIndex = 0
+  local rimIndex = 0
 
   -- Optionally draw every dungeon clone that is absent from the entire route.
   -- These are rendered first so route dots remain visually dominant if MDT ever
@@ -381,18 +400,38 @@ local function updateMinimapDots(frame, state, pulls, enemies, sublevel)
     if pull then
       local pullState = state.pullStates[pullIndex] and state.pullStates[pullIndex].state
       local r, g, b, a = colorForPullState(pullState)
+      -- The current wave switches from the uniform pull-state colour to per-mob
+      -- colours (same MobStyle rule as the portrait rings: tier colour, gray
+      -- low-efficiency gate, kick-cyan rim for boss/miniboss + interruptible).
+      local typed = (pullIndex == nextPull)
 
       for enemyIndex, clones in pairs(pull) do
         if tonumber(enemyIndex) and enemies[enemyIndex] then
+          local enemy = enemies[enemyIndex]
+          local dr, dg, db, da, rimC = r, g, b, a, nil
+          if typed then
+            local base, border = MobStyle.ringColors(enemy, clones)
+            dr, dg, db, da = base[1], base[2], base[3], base[4] or 1
+            rimC = border
+          end
           for _, cloneIndex in ipairs(clones) do
-            local clone = enemies[enemyIndex].clones and enemies[enemyIndex].clones[cloneIndex]
+            local clone = enemy.clones and enemy.clones[cloneIndex]
             if clone and (clone.sublevel == sublevel or not clone.sublevel) then
-              local dot
-              dot, dotIndex = getDot(frame, dotIndex)
-              dot:SetVertexColor(r, g, b, a)
-              -- Position relative to the container (scaled from original coords)
               local scaledX = clone.x * scale
               local scaledY = clone.y * scale
+              if rimC then
+                local rim
+                rim, rimIndex = getRim(frame, rimIndex)
+                rim:SetVertexColor(rimC[1], rimC[2], rimC[3], rimC[4] or 1)
+                rim:ClearAllPoints()
+                rim:SetPoint("CENTER", frame.minimapContainer, "TOPLEFT", scaledX, scaledY)
+                rim:SetSize(7, 7)
+                rim:Show()
+              end
+              local dot
+              dot, dotIndex = getDot(frame, dotIndex)
+              dot:SetVertexColor(dr, dg, db, da)
+              -- Position relative to the container (scaled from original coords)
               dot:ClearAllPoints()
               dot:SetPoint("CENTER", frame.minimapContainer, "TOPLEFT", scaledX, scaledY)
               dot:SetSize(5, 5)

@@ -7,6 +7,7 @@ describe("BeaconFrame.lua", function()
     mocks.reset()
     mocks.loadSource("Modules/Theme.lua")
     -- BeaconFrame captures MDT_NPT.BeaconMinimap at module-load time (for Minimap.drawCurrentPullOutline).
+    mocks.loadSource("Modules/MobStyle.lua")
     mocks.loadSource("Modules/BeaconMinimap.lua")
     -- NpcNotes and PullNotes both load before BeaconFrame (load_modules.xml
     -- order); the render functions capture them at module-load time too.

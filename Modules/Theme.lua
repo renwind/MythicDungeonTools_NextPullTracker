@@ -59,7 +59,6 @@ local FALLBACK = {
   progressBg     = { 0, 0, 0, 0.5 },
 
   -- Mob type (semantic game colours)
-  mobCaster      = { 0x4C/255, 0xE0/255, 0xD2/255, 1 }, -- #4CE0D2
   mobMiniboss    = { 0x6E/255, 0x24/255, 0xEC/255, 1 }, -- #6E24EC
   mobBoss        = { 0xEB/255, 0x84/255, 0x26/255, 1 }, -- #EB8426
   mobOther       = { 0xAE/255, 0x12/255, 0x00/255, 1 }, -- #AE1200

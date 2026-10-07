@@ -6,6 +6,7 @@ describe("BeaconMinimap.lua", function()
   before_each(function()
     mocks.reset()
     mocks.loadSource("Modules/Theme.lua")
+    mocks.loadSource("Modules/MobStyle.lua")
     mocks.loadSource("Modules/BeaconMinimap.lua")
     Minimap = _G.MDT_NPT.BeaconMinimap
   end)
@@ -347,31 +348,24 @@ describe("BeaconMinimap.lua", function()
       state = { currentNextPull = 1, pullStates = { [1] = { state = "next" } } }
     end)
 
-    it("colors dots with the default palette", function()
+    it("colors the current wave dots with mob-type colours, context pulls with the palette", function()
+      pulls[2] = { [1] = { 1 } } -- upcoming context pull (no pullState -> upcoming)
       local frame = makeDotFrame()
       Minimap.updateMinimapDots(frame, state, pulls, enemies, 1)
-      local accent = _G.MDT_NPT.Theme.colors.accent
-      local shown = 0
-      for _, dot in ipairs(frame.dots) do
-        if dot.shown then
-          shown = shown + 1
-          assert.same(accent, dot.color)
-        end
-      end
-      assert.is_true(shown > 0)
+      assert.same(_G.MDT_NPT.Theme.colors.mobOther, frame.dots[1].color) -- current: per-mob
+      assert.same(_G.MDT_NPT.Theme.pullColors["upcoming"], frame.dots[2].color) -- context: palette
     end)
 
-    it("uses a custom dot color from the DB", function()
+    it("uses a custom dot color from the DB for context pulls", function()
       _G.MDT_NPT.GetDB = function()
-        return { beacon = { pullColors = { ["next"] = { 0.9, 0.8, 0.7, 0.6 } } } }
+        return { beacon = { pullColors = { ["completed"] = { 0.9, 0.8, 0.7, 0.6 } } } }
       end
+      pulls[1], pulls[2] = { [1] = { 1 } }, { [1] = { 1 } }
+      state = { currentNextPull = 2, pullStates = { [1] = { state = "completed" }, [2] = { state = "next" } } }
       local frame = makeDotFrame()
       Minimap.updateMinimapDots(frame, state, pulls, enemies, 1)
-      for _, dot in ipairs(frame.dots) do
-        if dot.shown then
-          assert.same({ 0.9, 0.8, 0.7, 0.6 }, dot.color)
-        end
-      end
+      assert.same({ 0.9, 0.8, 0.7, 0.6 }, frame.dots[1].color) -- completed context pull
+      assert.same(_G.MDT_NPT.Theme.colors.mobOther, frame.dots[2].color) -- current: typed
     end)
 
     it("does not show monsters outside the route when the option is disabled", function()
@@ -398,8 +392,22 @@ describe("BeaconMinimap.lua", function()
       end
       assert.equals(2, #colors) -- one off-route clone plus the current route clone
       assert.same({ 0.75, 0.75, 0.75, 0.7 }, colors[1])
-      local accent = _G.MDT_NPT.Theme.colors.accent
-      assert.same(accent, colors[2])
+      assert.same(_G.MDT_NPT.Theme.colors.mobOther, colors[2]) -- current wave: per-mob colour
+    end)
+
+    it("draws a kick-cyan rim under a boss/miniboss + interruptible current-wave dot", function()
+      enemies[1].level = 91
+      enemies[1].spells = { [1] = { interruptible = true } }
+      local frame = makeDotFrame()
+      Minimap.updateMinimapDots(frame, state, pulls, enemies, 1)
+      assert.same(_G.MDT_NPT.Theme.colors.mobMiniboss, frame.dots[1].color)
+      assert.same(_G.MDT_NPT.Theme.colors.accent, frame.dotRims[1].color)
+    end)
+
+    it("draws no rim for single-attribute mobs", function()
+      local frame = makeDotFrame()
+      Minimap.updateMinimapDots(frame, state, pulls, enemies, 1)
+      assert.is_nil(frame.dotRims and frame.dotRims[1])
     end)
 
     it("uses the configured color for monsters outside the route", function()

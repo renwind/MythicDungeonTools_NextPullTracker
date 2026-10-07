@@ -48,36 +48,14 @@ local function shortEnemyName(zh)
   return zh
 end
 
--- Mob typing from static MDT data only (no nameplate parsing, to keep M+ frames
--- cheap). Level tiers per MDT enemy info: <=90 normal, 91 elite, >91 boss; isBoss
--- also forces boss. Priority: boss > elite > caster (interruptible spell) > other.
--- Tints the portrait short-name label.
-local MOB_COLORS = {
-  caster   = Theme.colors.mobCaster,
-  miniboss = Theme.colors.mobMiniboss,
-  boss     = Theme.colors.mobBoss,
-  other    = Theme.colors.mobOther,
-}
-
----Static caster signal from MDT: Enemy Info lists the mob's spells; any spell flagged
----interruptible means the mob casts (mirrors MDT's right-click Enemy Info spell list).
-local function hasInterruptibleSpell(enemy)
-  if not enemy.spells then return false end
-  for _, flags in pairs(enemy.spells) do
-    if flags and flags.interruptible then return true end
-  end
-  return false
-end
-
-local ELITE_LEVEL = 91 -- MDT enemy level tier: <=90 normal, ==91 elite, >91 boss
-
-local function staticMobType(enemy)
-  local level = enemy.level or 0
-  if enemy.isBoss or level > ELITE_LEVEL then return "boss" end
-  if level == ELITE_LEVEL then return "miniboss" end
-  if hasInterruptibleSpell(enemy) then return "caster" end
-  return "other"
-end
+-- Mob typing and ring colours live in MobStyle (single source of truth, shared
+-- with the minimap's current-wave dots).
+local MobStyle = MDT_NPT.MobStyle
+local hasInterruptibleSpell = MobStyle.hasInterruptibleSpell
+local staticMobType = MobStyle.typeOf
+local efficiencyScoreOf = MobStyle.efficiencyScoreOf
+local GRAY_COLOR = MobStyle.gray
+local MOB_COLORS = MobStyle.colors
 
 local FRAME_BASE_W, FRAME_BASE_H = 418, 216  -- wider minimap viewport (208) + 188 info panel;
                                              -- height = minimap 208 + 4px margins so the map fills the left column exactly
@@ -573,6 +551,7 @@ local function create()
   -- ≤4 mobs → single row at 34x34; >4 mobs → 2x4 grid at 28x28.
   beaconFrame.portraits = {}
   beaconFrame.portraitOutlines = {}
+  beaconFrame.portraitOutlinesR = {}
   beaconFrame.portraitHovers = {}
   beaconFrame.portraitInfoPanelX = infoPanelX -- stored so the render fn can re-anchor
   for i = 1, 8 do
@@ -581,14 +560,28 @@ local function create()
     portrait:Hide()
     beaconFrame.portraits[i] = portrait
 
-    -- Thin white ring: filled circle 2px larger than the portrait; the portrait's
-    -- circular mask leaves a ~1px ring of white visible around it.
+    -- Thin ring: filled circle 2px larger than the portrait; the portrait's
+    -- circular mask leaves a ~1px ring visible. Always drawn as two half-discs
+    -- (left/right art crops on half-width widgets, so no stretching): a mob with
+    -- two signals (boss/miniboss tier + interruptible) shows tier colour on the
+    -- left arc and kick cyan on the right; single-attribute mobs tint both
+    -- halves the same colour. TexCoord never changes after creation, so slot
+    -- reuse only has to re-tint.
     local outline = beaconFrame:CreateTexture(nil, "BORDER")
     outline:SetTexture("Interface\\AddOns\\MythicDungeonTools\\Textures\\Circle_White")
     outline:SetVertexColor(unpack(Theme.colors.textPrimary))
-    outline:SetPoint("CENTER", portrait, "CENTER", 0, 0)
+    outline:SetTexCoord(0, 0.5, 0, 1)
+    outline:SetPoint("TOPLEFT", portrait, "TOPLEFT", -1, 1)
+    outline:SetPoint("BOTTOMLEFT", portrait, "BOTTOMLEFT", -1, -1)
     outline:Hide()
     beaconFrame.portraitOutlines[i] = outline
+    local outlineR = beaconFrame:CreateTexture(nil, "BORDER")
+    outlineR:SetTexture("Interface\\AddOns\\MythicDungeonTools\\Textures\\Circle_White")
+    outlineR:SetTexCoord(0.5, 1, 0, 1)
+    outlineR:SetPoint("TOPRIGHT", portrait, "TOPRIGHT", 1, 1)
+    outlineR:SetPoint("BOTTOMRIGHT", portrait, "BOTTOMRIGHT", 1, -1)
+    outlineR:Hide()
+    beaconFrame.portraitOutlinesR[i] = outlineR
 
     -- Transparent hover region matching the portrait, used to display the mob
     -- name on tooltip. Textures don't receive mouse input, so we overlay a frame.
@@ -1062,6 +1055,7 @@ local function renderRouteComplete(frame, state, totalForcesMax)
   for i = 1, #frame.portraits do
     frame.portraits[i]:Hide()
     frame.portraitOutlines[i]:Hide()
+    frame.portraitOutlinesR[i]:Hide()
     if frame.portraitHovers and frame.portraitHovers[i] then
       frame.portraitHovers[i]:Hide()
     end
@@ -1193,8 +1187,10 @@ local function layoutPortraitSlot(frame, i, count)
 
   local portrait = frame.portraits[i]
   local outline = frame.portraitOutlines[i]
+  local outlineR = frame.portraitOutlinesR[i]
   portrait:SetSize(size, size)
-  outline:SetSize(size + 2, size + 2)
+  outline:SetWidth((size + 2) / 2)
+  outlineR:SetWidth((size + 2) / 2)
 
   local rows = twoRow and 2 or 1
   local colFromRight = math.floor((i - 1) / rows)
@@ -1207,26 +1203,8 @@ local function layoutPortraitSlot(frame, i, count)
   portrait:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
 end
 
--- MDT tooltip efficiency score: 2.5 * (forces/totalForces) * 13000 / (health/20000).
--- Returns nil when the required MDT data is unavailable (score then never grays).
-local function efficiencyScoreOf(enemy, clones)
-  local health = enemy.health
-  if not health or health <= 0 then return nil end
-  -- pull[enemyIndex] holds clone INDICES (numbers), not clone tables; resolve via enemy.clones
-  local cloneIdx = (type(clones) == "table") and clones[1]
-  local clone = (type(cloneIdx) == "number") and enemy.clones and enemy.clones[cloneIdx]
-  local forces = (clone and clone.count) or enemy.count
-  if not forces then return nil end
-  local ok, mdtDb = pcall(MDT.GetDB, MDT)
-  local idx = ok and mdtDb and mdtDb.currentDungeonIdx
-  local totals = idx and MDT.dungeonTotalCount and MDT.dungeonTotalCount[idx]
-  local totalCount = totals and totals.normal
-  if not totalCount or totalCount <= 0 then return nil end
-  return 2.5 * (forces / totalCount) * 13000 / (health / 20000)
-end
-
-local GRAY_COLOR = { 0.55, 0.55, 0.55 } -- low efficiency (score < 1): ring + texts go gray
-
+-- MDT tooltip efficiency score and the gray gate moved to MobStyle (shared with
+-- the minimap dots). Aliases live at the top of this file.
 local function renderEnemiesPortraits(frame, pull, enemies)
   local enemyIndices = {}
   if pull and enemies then
@@ -1258,18 +1236,12 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     hpByKey[ei] = hp
     effByKey[ei] = efficiencyScoreOf(e, pull[ei])
   end
-  -- Bosses/minibosses are mandatory kills: the efficiency score (raw-health
-  -- denominator) always sinks them under 1, so the gray "no progress" gate and
-  -- the sort sink must skip them
   local typeByKey = {}
   for _, ei in ipairs(enemyIndices) do
     typeByKey[ei] = staticMobType(enemies[ei])
   end
   local function isGrayKey(ei)
-    local s = effByKey[ei]
-    if not (s ~= nil and s < 1) then return false end
-    local mt = typeByKey[ei]
-    return mt ~= "boss" and mt ~= "miniboss"
+    return MobStyle.isGrayScore(effByKey[ei], typeByKey[ei])
   end
   table.sort(enemyIndices, function(a, b)
     local ea, eb = enemies[a], enemies[b]
@@ -1305,6 +1277,7 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     SetPortraitTextureFromCreatureDisplayID(frame.portraits[i], displayId)
     frame.portraits[i]:Show()
     frame.portraitOutlines[i]:Show()
+    frame.portraitOutlinesR[i]:Show()
     -- short Chinese name under the portrait
     local rawName = enemy.name
     local zh = (MDT_NPT.NPC_ZH and MDT_NPT.NPC_ZH[rawName]) or (getMDTLocale() and getMDTLocale()[rawName]) or (MDT.L and MDT.L[rawName])
@@ -1319,12 +1292,19 @@ local function renderEnemiesPortraits(frame, pull, enemies)
     nm:ClearAllPoints()
     nm:SetPoint("TOP", frame.portraits[i], "BOTTOM", 0, 0)
     nm:SetText(fitLabel(shortEnemyName(zh) or "", (count > PORTRAIT_PER_ROW) and 4 or PORTRAIT_LABEL_MAX_CHARS))
-    -- low efficiency (<1) paints ring + name + count gray; bosses/minibosses are
-    -- exempt (mandatory kills); otherwise the mob-type color
-    local mc = isGrayKey(enemyIndices[i]) and GRAY_COLOR or MOB_COLORS[typeByKey[enemyIndices[i]]] or MOB_COLORS.other
+    -- low efficiency (<1) paints ring + name + count gray; bosses/minibosses and
+    -- casters are exempt (see isGrayKey); otherwise the mob-type color
+    local ei = enemyIndices[i]
+    local mt = typeByKey[ei]
+    local mc = isGrayKey(ei) and GRAY_COLOR or MOB_COLORS[mt] or MOB_COLORS.other
     nm:SetTextColor(mc[1], mc[2], mc[3], 1)
-    -- Tint the white circle ring around the portrait with the same mob-type color.
+    -- Ring halves: left always carries the type colour; a boss/miniboss that also
+    -- casts gets the right half in kick cyan (MobStyle rule, shared with the map
+    -- dots). Single-attribute mobs tint both halves alike (slots are reused
+    -- across pulls, so always re-tint both).
+    local mcR = MobStyle.borderColor(enemy, mt) or mc
     frame.portraitOutlines[i]:SetVertexColor(mc[1], mc[2], mc[3], 1)
+    frame.portraitOutlinesR[i]:SetVertexColor(mcR[1], mcR[2], mcR[3], 1)
     nm:Show()
     -- clone count badge at the portrait's top-left ("x2" etc.; a single mob shows nothing)
     local clones = pull[enemyIndices[i]]
@@ -1362,6 +1342,7 @@ local function renderEnemiesPortraits(frame, pull, enemies)
   for i = count + 1, PORTRAIT_MAX do
     frame.portraits[i]:Hide()
     frame.portraitOutlines[i]:Hide()
+    frame.portraitOutlinesR[i]:Hide()
     if frame.portraitNames and frame.portraitNames[i] then frame.portraitNames[i]:Hide() end
     if frame.portraitCounts and frame.portraitCounts[i] then frame.portraitCounts[i]:Hide() end
     if frame.portraitHovers and frame.portraitHovers[i] then
@@ -1496,6 +1477,7 @@ local function applyLayoutMode(frame)
     for i = 1, #frame.portraits do
       frame.portraits[i]:Hide()
       frame.portraitOutlines[i]:Hide()
+      frame.portraitOutlinesR[i]:Hide()
       if frame.portraitNames and frame.portraitNames[i] then frame.portraitNames[i]:Hide() end
       if frame.portraitCounts and frame.portraitCounts[i] then frame.portraitCounts[i]:Hide() end
       if frame.portraitHovers[i] then frame.portraitHovers[i]:Hide() end

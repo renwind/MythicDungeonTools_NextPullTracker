@@ -17,7 +17,7 @@ describe("Theme.lua", function()
         "panelBg", "panelBorder", "minimapBg", "minimapBorder", "buttonBg",
         "textPrimary", "textSecondary", "textMuted", "shadow",
         "statusCombat", "progressCurrent", "progressPreview", "progressBg",
-        "mobCaster", "mobMiniboss", "mobBoss", "mobOther",
+        "mobMiniboss", "mobBoss", "mobOther",
         "cdUse", "cdSave", "cdConflict", "cdMismatch", "cdEmpty",
         "lustNotReady", "lustReady",
         "settingsBoxBg", "swatchBorder",
