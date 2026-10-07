@@ -295,6 +295,16 @@ function MDT_NPT:Start(manual, retryCount, generation, challengeExpected, overri
       print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — no non-empty MDT route for dungeon "..tostring(detectedDungeonIndex)..".")
       return
     end
+  elseif override and override.current then
+    -- /npt start current：跟 MDT 下拉框当前预览的路线。区域判定与记忆 uid 都不参与——
+    -- 这是显式指令：主城选中项可能被赛季默认值顶掉（MDTAdapter.lua:163），由玩家承担。
+    local mdtDB = MDT:GetDB()
+    detectedDungeonIndex = mdtDB and mdtDB.currentDungeonIdx or nil
+    preset = MDT:GetCurrentPreset(detectedDungeonIndex)
+    if not preset then
+      print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — MDT has no selected route for dungeon "..tostring(detectedDungeonIndex)..".")
+      return
+    end
   else
     local dungeonReady
     dungeonReady, detectedDungeonIndex = Mdt.syncMDTDungeonToPlayerZone(challengeExpected)
@@ -341,6 +351,13 @@ function MDT_NPT:Start(manual, retryCount, generation, challengeExpected, overri
   state.lastForces = 0
 
   MDT_NPT.state = state
+
+  -- 回显实际跟上的路线：区域判定 / 记忆 uid / 当前预览三条来源肉眼分不清，
+  -- 跟错路线时这一行是唯一的即时线索（信标左下角的 idx 读数同源）。
+  print("|cFF00FF00MDT-NextPullTracker|r: tracking \""
+    .. tostring(preset.text or "?") .. "\" (uid=" .. tostring(preset.uid or "-")
+    .. ", dungeon " .. tostring(state.dungeonIndex)
+    .. ", " .. tostring(#state.pullStates) .. " pulls)")
 
   eventFrame:RegisterEvent("SCENARIO_CRITERIA_UPDATE")
   eventFrame:RegisterEvent("SCENARIO_UPDATE")

@@ -46,6 +46,10 @@ function Beacon:Update()
   local preset = MDT:GetTrackedPreset(state)
   local pulls = preset and preset.value and preset.value.pulls
 
+  -- 地图左下角的副本索引读数：放在 route-complete 提前返回之前，
+  -- 收尾态也照样显示当前追踪的是哪个副本。
+  BeaconFrame.renderMapIndex(frame, dungeonIndex)
+
   local nextPull = state.currentNextPull
   if not nextPull then
     BeaconFrame.renderRouteComplete(frame, state, totalForcesMax)

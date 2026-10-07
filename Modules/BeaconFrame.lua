@@ -369,6 +369,10 @@ local function create()
       local mc = Theme.colors.accent
       for _, t in ipairs(self.mapBorder) do t:SetColorTexture(mc[1], mc[2], mc[3], 1) end
     end
+    if self.mapIdxText then
+      local mc = Theme.colors.accent
+      self.mapIdxText:SetTextColor(mc[1], mc[2], mc[3], 1)
+    end
     Theme.UpdateBorder(self._borderTextures)
     -- Note strips keep their darkened accent chrome (NOTE_STRIP_BG_DIM), unlike
     -- the lighter in-window plan band above. The wave strip shares it.
@@ -507,6 +511,23 @@ local function create()
     edge("TOPRIGHT", "BOTTOMRIGHT", false, bs, 0, bs, 0)
   end
   beaconFrame.mapBorder = mapBorder
+
+  -- MDT dungeonIndex 读数：地图左下角小字，青色黑描边（用户指定）。缩放按钮占右下角，
+  -- 两者不冲突。瓦片挂在后创建的 minimapContainer 上，同 strata/level 下按创建序会盖住
+  -- minimapFrame 自己的 region（真机表现就是读数看不见），所以读数自带一个更晚创建、
+  -- 层级更高的承载框。描边必须走 SetFont 的 flags：12.x 没有 FontString:SetOutlined。
+  local mapIdxFrame = CreateFrame("Frame", nil, beaconFrame.minimapFrame)
+  mapIdxFrame:SetAllPoints(beaconFrame.minimapFrame)
+  mapIdxFrame:EnableMouse(false)
+  mapIdxFrame:SetFrameLevel(beaconFrame.minimapContainer:GetFrameLevel() + 2)
+  local mapIdx = mapIdxFrame:CreateFontString(nil, "OVERLAY", Theme.fonts.small)
+  mapIdx:SetJustifyH("LEFT")
+  mapIdx:SetJustifyV("BOTTOM")
+  mapIdx:SetPoint("BOTTOMLEFT", mapIdxFrame, "BOTTOMLEFT", 3, 2)
+  local idxFile, idxSize = mapIdx:GetFont()
+  if idxFile then mapIdx:SetFont(idxFile, idxSize, "OUTLINE") end
+  mapIdx:SetTextColor(Theme.colors.accent[1], Theme.colors.accent[2], Theme.colors.accent[3], 1)
+  beaconFrame.mapIdxText = mapIdx
 
   -- Zoom buttons (bottom-right corner of minimap)
   local function createZoomButton(label, offsetY, delta)
@@ -1492,6 +1513,18 @@ local function applyLayoutMode(frame)
   syncFrameHeight(frame)
 end
 
+---地图左下角的 MDT dungeonIndex 读数：排查「信标跟的是哪个副本」时一眼可见，
+---不必再 /run 探针。dungeonIndex 为空（未追踪）时隐藏而不是显示 nil。
+local function renderMapIndex(frame, dungeonIndex)
+  if not (frame and frame.mapIdxText) then return end
+  if dungeonIndex == nil then
+    frame.mapIdxText:Hide()
+    return
+  end
+  frame.mapIdxText:SetText(tostring(dungeonIndex))
+  frame.mapIdxText:Show()
+end
+
 MDT_NPT.BeaconFrame = {
   create = create,
   isMouseOver = isMouseOver,
@@ -1504,4 +1537,5 @@ MDT_NPT.BeaconFrame = {
   renderEnemiesPortraits = renderEnemiesPortraits,
   renderNpcNotes = renderNpcNotes,
   renderUpcomingPreview = renderUpcomingPreview,
+  renderMapIndex = renderMapIndex,
 }

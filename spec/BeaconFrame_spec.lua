@@ -71,4 +71,34 @@ describe("BeaconFrame.lua", function()
       assert.is_false(BeaconFrame.isMouseOver(nil))
     end)
   end)
+
+  describe("renderMapIndex", function()
+    local function makeIdxText()
+      local fs = { shown = false }
+      function fs:SetText(t) self.text = t end
+      function fs:Show() self.shown = true end
+      function fs:Hide() self.shown = false end
+      return fs
+    end
+
+    it("writes the tracked dungeon index as text and shows it", function()
+      local fs = makeIdxText()
+      BeaconFrame.renderMapIndex({ mapIdxText = fs }, 160)
+      assert.equals("160", fs.text)
+      assert.is_true(fs.shown)
+    end)
+
+    it("hides the readout when there is no dungeon index", function()
+      local fs = makeIdxText()
+      fs:SetText("160")
+      fs:Show()
+      BeaconFrame.renderMapIndex({ mapIdxText = fs }, nil)
+      assert.is_false(fs.shown)
+    end)
+
+    it("is a safe no-op for frames without the readout", function()
+      assert.has_no.errors(function() BeaconFrame.renderMapIndex({}, 160) end)
+      assert.has_no.errors(function() BeaconFrame.renderMapIndex(nil, 160) end)
+    end)
+  end)
 end)

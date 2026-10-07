@@ -39,9 +39,13 @@ local function handleStart(rest)
     MDT_NPT:Start(true, nil, nil, nil, { uid = (charDB and charDB.lastImportedPlanUID) or "" })
     return
   end
+  if arg == "current" or arg == "cur" then
+    MDT_NPT:Start(true, nil, nil, nil, { current = true })
+    return
+  end
   local dungeon = tonumber(arg)
   if not dungeon or dungeon < 1 or dungeon % 1 ~= 0 then
-    print(PREFIX..": usage: "..CMD_COLOR.."/npt start [last|<dungeonIndex>]|r")
+    print(PREFIX..": usage: "..CMD_COLOR.."/npt start [last|current|<dungeonIndex>]|r")
     return
   end
   MDT_NPT:Start(true, nil, nil, nil, { dungeon = dungeon })
@@ -271,7 +275,7 @@ end
 -- ============ command table ============
 
 commands = {
-  { name = "start",    usage = "start [last|<dungeonIndex>]", help = "begin tracking; last = remembered planned route, index = force a dungeon", handler = handleStart },
+  { name = "start",    usage = "start [last|current|<dungeonIndex>]", help = "begin tracking; last = remembered planned route, current (or cur) = MDT's selected preview, index = force a dungeon", handler = handleStart },
   { name = "stop",     usage = "stop",        help = "stop tracking and clear tracking state",            handler = handleStop },
   { name = "status",   usage = "status",      help = "print the current pull's state and forces",         handler = handleStatus },
   { name = "skip",     usage = "skip <N>",    help = "jump directly to pull N (marks prior pulls done)",  handler = handleSkip },
