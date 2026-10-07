@@ -40,7 +40,7 @@ function CooldownAlert.buildItems(dbChar, uid, pullIndex)
   if not entries or #entries == 0 then return nil end
 
   local icons, tags = {}, {}
-  for i = #entries, 1, -1 do
+  for i = 1, #entries do
     local entry = entries[i]
     if entry.plan and entry.plan.action == "use" then
       icons[#icons + 1] = seedIcon(entry.seed, dbChar)

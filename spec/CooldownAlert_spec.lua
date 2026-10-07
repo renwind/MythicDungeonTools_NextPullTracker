@@ -30,8 +30,8 @@ describe("CooldownAlert.buildItems", function()
     scenario(function(env, alert)
       env.dbChar.cooldownPlans.a = { [1] = plan(spell(), potion(), lust()) }
       local items = alert.buildItems(env.dbChar, "a", 1)
-      assert.equals("lust-potion-asc", items.audioKey)
-      assert.same({ "spell:2825", "item:241308", "spell:114050" }, items.icons)
+      assert.equals("asc-potion-lust", items.audioKey)
+      assert.same({ "spell:114050", "item:241308", "spell:2825" }, items.icons)
     end)
   end)
 
@@ -39,9 +39,9 @@ describe("CooldownAlert.buildItems", function()
     scenario(function(env, alert)
       env.dbChar.cooldownPlans.a = { [1] = plan(spell("save"), potion("use"), lust("use")) }
       local items = alert.buildItems(env.dbChar, "a", 1)
-      -- 逆序遍历剩下 [嗜血, 爆发药水]，升腾被 save 挡掉
-      assert.equals("lust-potion", items.audioKey)
-      assert.same({ "spell:2825", "item:241308" }, items.icons)
+      -- 正序遍历剩下 [爆发药水, 嗜血]，升腾被 save 挡掉
+      assert.equals("potion-lust", items.audioKey)
+      assert.same({ "item:241308", "spell:2825" }, items.icons)
     end)
   end)
 
@@ -90,11 +90,11 @@ describe("CooldownAlert.play", function()
 
   it("默认语言播 en-US 的录音，走 Master 声道", function()
     scenario(function(env, alert)
-      alert.play("lust-potion-asc")
+      alert.play("asc-potion-lust")
       assert.equals(1, #env.played)
       assert.equals("Master", env.played[1].channel)
       assert.equals(
-        "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Media\\voice\\en-US\\lust-potion-asc.mp3",
+        "Interface\\AddOns\\MythicDungeonTools_NextPullTracker\\Media\\voice\\en-US\\asc-potion-lust.mp3",
         env.played[1].path)
     end)
   end)
@@ -102,9 +102,9 @@ describe("CooldownAlert.play", function()
   it("中文客户端播 zh-CN 的录音", function()
     scenario(function(env, alert)
       _G.GetLocale = function() return "zhCN" end
-      alert.play("lust-potion-asc")
+      alert.play("asc-potion-lust")
       assert.equals(1, #env.played)
-      assert.truthy(env.played[1].path:find("\\zh-CN\\lust-potion-asc.mp3", 1, true))
+      assert.truthy(env.played[1].path:find("\\zh-CN\\asc-potion-lust.mp3", 1, true))
     end)
   end)
 end)
@@ -147,7 +147,7 @@ describe("CooldownAlert 触发编排", function()
       env.fireTimers()
       assert.equals(1, #env.played)
       -- 路径前缀由 play 的那组测试专门守住，这里只钉住「播的是哪一条录音」。
-      assert.truthy(env.played[1].path:find("\\en-US\\lust-potion-asc.mp3", 1, true))
+      assert.truthy(env.played[1].path:find("\\en-US\\asc-potion-lust.mp3", 1, true))
       assert.equals(1, #env.shown)
       assert.equals(3, #env.shown[1])
     end)
@@ -173,7 +173,7 @@ describe("CooldownAlert 触发编排", function()
       alert:OnUpdateAll()
       env.fireTimers()
       assert.equals(1, #env.played)
-      assert.truthy(env.played[1].path:find("\\en-US\\lust-potion-asc.mp3", 1, true))
+      assert.truthy(env.played[1].path:find("\\en-US\\asc-potion-lust.mp3", 1, true))
     end)
   end)
 
@@ -315,8 +315,8 @@ describe("CooldownAlert 触发编排", function()
     scenario(function(env, alert)
       seedPlans(env)
       MDT_NPT.state = activeState("a", 1)
-      assert.equals("lust-potion-asc", alert:SpeakNow().audioKey)
-      assert.equals("lust-potion-asc", alert:SpeakNow().audioKey)   -- 连按两次都出声
+      assert.equals("asc-potion-lust", alert:SpeakNow().audioKey)
+      assert.equals("asc-potion-lust", alert:SpeakNow().audioKey)   -- 连按两次都出声
       assert.equals(2, #env.played)
       assert.equals(0, #env.timers)       -- 不排定时器
     end)
