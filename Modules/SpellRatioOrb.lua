@@ -48,6 +48,17 @@ local function clampScale(value)
   return value
 end
 
+--- 比例文字的两个数字各自染成球内液体的实际颜色（OrbLiquid.Tint 归一+抬升后的值），
+--- 而不是主题原色：球里看到的是抬升后的颜色，文字跟球对齐才读作同一套语义。
+--- 冒号不吃转义、沿用 FontString 基准色，作为两个数字之间的中性分隔。
+local function colorEscape(color)
+  local t = OrbLiquid.Tint(color)
+  return string.format("|cFF%02X%02X%02X",
+    math.floor(t[1] * 255 + 0.5),
+    math.floor(t[2] * 255 + 0.5),
+    math.floor(t[3] * 255 + 0.5))
+end
+
 local function savePosition(f)
   local db = MDT_NPT:GetDB()
   if not (db and db.beacon) then return end
@@ -269,7 +280,10 @@ function SpellRatioOrb:Update()
   f.orb:SetSplit(fill.elementalBlast, fill.earthquake)
 
   local tenths = SpellRatioData:RatioTenths(row)
-  f.ratioText:SetText(tenths.elementalBlast .. ":" .. tenths.earthquake)
+  f.ratioText:SetText(
+    colorEscape(Theme.colors.spellRatioElemental) .. tenths.elementalBlast .. "|r"
+    .. " : "
+    .. colorEscape(Theme.colors.spellRatioEarthquake) .. tenths.earthquake .. "|r")
   f.ratioText:Show()
 
   f:Show()

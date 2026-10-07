@@ -287,19 +287,27 @@ end
 --- 染色范围是「液体 + 该侧两层气泡」，三者必须同色：气泡贴图是白/灰度遮罩，
 --- 本就设计成靠顶点色上色，只染液体不染气泡会得到一团白色泡沫浮在有色液体上。
 --- 有意不染 grid（装饰环）：用户明确要求保留原图色、不跟 EUI 主题。
-local function applyColor(liquid, bubbles, color)
+--- 染色用的最终顶点色：先按最大通道归一（保色相、主通道拉满亮），再向白色抬升
+--- LIQUID_LIFT。导出给调用方（SpellRatioOrb 的比例文字要用与球内液体一致的颜色）。
+function OrbLiquid.Tint(color)
   local maxChannel = math.max(color[1], color[2], color[3])
   local r, g, b = color[1], color[2], color[3]
   if maxChannel > 0 then
     r, g, b = r / maxChannel, g / maxChannel, b / maxChannel
   end
-  r = r + (1 - r) * LIQUID_LIFT
-  g = g + (1 - g) * LIQUID_LIFT
-  b = b + (1 - b) * LIQUID_LIFT
-  local a = color[4] or 1
-  liquid:SetVertexColor(r, g, b, a)
+  return {
+    r + (1 - r) * LIQUID_LIFT,
+    g + (1 - g) * LIQUID_LIFT,
+    b + (1 - b) * LIQUID_LIFT,
+    color[4] or 1,
+  }
+end
+
+local function applyColor(liquid, bubbles, color)
+  local t = OrbLiquid.Tint(color)
+  liquid:SetVertexColor(t[1], t[2], t[3], t[4])
   for _, bubble in ipairs(bubbles) do
-    bubble:SetVertexColor(r, g, b, a)
+    bubble:SetVertexColor(t[1], t[2], t[3], t[4])
   end
 end
 

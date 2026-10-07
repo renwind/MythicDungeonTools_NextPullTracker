@@ -10,6 +10,24 @@ local SIZE_GRABBER_UP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up"
 local SIZE_GRABBER_HIGHLIGHT = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight"
 local SIZE_GRABBER_DOWN = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down"
 
+--- 比例文字的两个数字分别染成球内液体的实际颜色（与 OrbLiquid.Tint 同公式），
+--- 冒号沿用 FontString 基准色。断言必须走同一套转义，否则和产品代码各写一份 hex 会漂移。
+local function tintEscape(c)
+  local m = math.max(c[1], c[2], c[3])
+  local r, g, b = c[1] / m, c[2] / m, c[3] / m
+  r = r + (1 - r) * 0.25
+  g = g + (1 - g) * 0.25
+  b = b + (1 - b) * 0.25
+  return string.format("|cFF%02X%02X%02X",
+    math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+end
+local EB_ESC = tintEscape({ 179 / 255, 76 / 255, 255 / 255 })
+local EQ_ESC = tintEscape({ 230 / 255, 190 / 255, 114 / 255 })
+local function ratio(text)
+  local eb, eq = text:match("^(%d+):(%d+)$")
+  return EB_ESC .. eb .. "|r : " .. EQ_ESC .. eq .. "|r"
+end
+
 local function scenario(fn)
   mocks.withCooldownRuntime(function(env)
     env.dbChar.rotationRatios = {}
@@ -308,7 +326,7 @@ describe("SpellRatioOrb rendering", function()
       assert.is_true(frame.orb.ebClip:IsShown())
       assert.is_true(frame.orb.eqClip:IsShown())
       assert.is_true(frame.orb.spark:IsShown())
-      assert.equals("8:2", frame.ratioText:GetText())
+      assert.equals(ratio("8:2"), frame.ratioText:GetText())
       assert.is_true(frame.ratioText:IsShown())
       assert.equals(env.activePull, env.verifiedPull)
       assert.equals(MDT.dungeonEnemies[1], env.verifiedEnemies)
@@ -324,7 +342,7 @@ describe("SpellRatioOrb rendering", function()
       local frame = orb:GetFrame()
       assert.equals(1, frame.orb.ebDriver.value)
       assert.equals(9, frame.orb.eqDriver.value)
-      assert.equals("0:10", frame.ratioText:GetText())
+      assert.equals(ratio("0:10"), frame.ratioText:GetText())
     end)
   end)
 
@@ -368,7 +386,7 @@ describe("SpellRatioOrb rendering", function()
       local frame = orb:GetFrame()
       assert.equals(2, frame.orb.ebDriver.value)
       assert.equals(8, frame.orb.eqDriver.value)
-      assert.equals("2:8", frame.ratioText:GetText())
+      assert.equals(ratio("2:8"), frame.ratioText:GetText())
     end)
   end)
 
@@ -377,13 +395,13 @@ describe("SpellRatioOrb rendering", function()
       seed(3, 3)
       orb:Update()
       local frame = orb:GetFrame()
-      assert.equals("5:5", frame.ratioText:GetText())
+      assert.equals(ratio("5:5"), frame.ratioText:GetText())
       assert.equals(5, frame.orb.ebDriver.value)
       assert.equals(5, frame.orb.eqDriver.value)
 
       MDT_NPT.SpellRatioData:Set("uid1", 1, 51, 49, "fp")
       orb:Update()
-      assert.equals("5:5", frame.ratioText:GetText())
+      assert.equals(ratio("5:5"), frame.ratioText:GetText())
     end)
   end)
 
