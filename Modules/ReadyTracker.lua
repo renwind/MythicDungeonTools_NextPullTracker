@@ -176,9 +176,9 @@ end
 
 local ticker
 
--- 自驱动：加载即挂唯一一个 0.5s ticker，开关判定与绘制都在回调里，不新建第二个。
+-- 自驱动：加载即挂唯一一个 0.2s ticker，开关判定与绘制都在回调里，不新建第二个。
 local function ensureTicker()
-  if not ticker then ticker = C_Timer.NewTicker(0.5, tick) end
+  if not ticker then ticker = C_Timer.NewTicker(0.2, tick) end
 end
 
 -- 测试与将来可能的 /npt 挂钩用：拿到当前窗体（未建窗时是 nil）。
