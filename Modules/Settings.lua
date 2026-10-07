@@ -178,6 +178,10 @@ local function buildPanel()
     "readyTracker", L["Ready Tracker Window Tooltip"],
     nil, true)
 
+  makeBeaconBool(category, "MDTNPT_LUST_MONITOR", L["Bloodlust Monitor"],
+    "showLustMonitor", L["Bloodlust Monitor Tooltip"],
+    refreshBeacon, true)
+
   makeBeaconBool(category, "MDTNPT_SPELL_RATIO_ORB", L["Spell Ratio Orb"],
     "spellRatioOrb", L["Spell Ratio Orb Tooltip"],
     function()

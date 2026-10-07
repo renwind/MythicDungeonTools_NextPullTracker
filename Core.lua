@@ -63,6 +63,7 @@ local defaultSavedVars = {
       -- v5: ready-tracker comparison window (design v5). Read on its own 0.5s
       -- poll by ReadyTracker, account-wide like the toggles above.
       readyTracker = true,
+      showLustMonitor = true,
       -- Independent WCL spell-ratio orb; it follows tracking state, not Beacon
       -- visibility, and refreshes through UpdateAll rather than its own ticker.
       spellRatioOrb = true,

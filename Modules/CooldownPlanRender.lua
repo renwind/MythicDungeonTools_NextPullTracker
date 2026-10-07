@@ -582,7 +582,12 @@ function Render:Render(frame, state, preset, nextPull)
   frame:SetCdBandShown(true)
   fillRow(showRow, entries, dbChar, mismatch, ICON_SIZE, true)
   -- bloodlust monitor to the right of the current-pull row
-  if MDT_NPT.CooldownLust then MDT_NPT.CooldownLust:Update(showRow) end
+  local db = MDT_NPT:GetDB()
+  if MDT_NPT.CooldownLust and (not db or not db.beacon or db.beacon.showLustMonitor ~= false) then
+    MDT_NPT.CooldownLust:Update(showRow)
+  elseif MDT_NPT.CooldownLust then
+    MDT_NPT.CooldownLust:Hide(showRow)
+  end
   -- curse/poison preview to the right of the bloodlust monitor
   updateDispels(showRow, pull, enemies)
 
