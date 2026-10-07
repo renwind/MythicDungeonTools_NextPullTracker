@@ -268,6 +268,20 @@ end
 -- Start / Stop
 -- =====================================================================
 
+--- /npt start <数字> 给错索引时，把当前赛季池的 8 个 dungeonIndex 连名字一起列出来，
+--- 省得玩家去翻 MDT 的副本页签对编号。赛季池取 MDT 的第 1 张列表（插入顺序即最新赛季）。
+local function seasonPoolHint()
+  local lists = MDT and MDT.dungeonSelectionToIndex
+  local pool = lists and lists[1]
+  if not pool then return "" end
+  local parts = {}
+  for _, idx in ipairs(pool) do
+    local name = MDT.GetDungeonName and MDT:GetDungeonName(idx) or nil
+    parts[#parts + 1] = tostring(idx) .. (name and (" " .. name) or "")
+  end
+  return " Season dungeons: " .. table.concat(parts, " | ")
+end
+
 function MDT_NPT:Start(manual, retryCount, generation, challengeExpected, override)
   retryCount = retryCount or 0
   if not generation then
@@ -293,7 +307,7 @@ function MDT_NPT:Start(manual, retryCount, generation, challengeExpected, overri
     detectedDungeonIndex = override.dungeon
     preset = MDT:GetCurrentPreset(detectedDungeonIndex)
     if not preset then
-      print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — no non-empty MDT route for dungeon "..tostring(detectedDungeonIndex)..".")
+      print("|cFF00FF00MDT-NextPullTracker|r: Cannot start tracking — no non-empty MDT route for dungeon "..tostring(detectedDungeonIndex).."."..seasonPoolHint())
       return
     end
   elseif override and override.current then

@@ -48,6 +48,8 @@ describe("Core.lua — /npt start current 与启动回显", function()
       end,
       FindPresetByUID = function() return nil end,
       UpdateToDungeon = function() end,
+      dungeonSelectionToIndex = { { 160, 161, 162, 163, 164, 42, 20, 17 } },
+      GetDungeonName = function(_, idx) return "D" .. idx end,
     }
     _G.MDT_NPT.State = {
       buildStateFromPreset = function(preset)
@@ -122,6 +124,17 @@ describe("Core.lua — /npt start current 与启动回显", function()
     assert.equals(1, #getCurrentCalls)
     assert.equals(20, getCurrentCalls[1])
     assert.equals("uid-preview", MDT_NPT.state.presetUID)
+  end)
+
+  it("start 给不存在的副本索引时列出赛季池 8 个 ID 与名字", function()
+    _G.MDT_NPT.MDT.GetCurrentPreset = function() return nil end
+    MDT_NPT:Slash("start 40")
+    local out = joinedPrints()
+    assert.is_true(out:find("no non-empty MDT route for dungeon 40", 1, true) ~= nil)
+    for _, idx in ipairs({ 160, 161, 162, 163, 164, 42, 20, 17 }) do
+      assert.is_true(out:find(idx .. " D" .. idx, 1, true) ~= nil)
+    end
+    assert.is_nil(MDT_NPT.state)
   end)
 
   it("未知参数打印含 current 的用法", function()
